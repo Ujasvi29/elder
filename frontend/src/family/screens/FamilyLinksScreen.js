@@ -198,6 +198,23 @@ export function FamilyLinksScreen({ navigation }) {
                 </Pressable>
               )}
 
+              {/* Same can_view_location gate as Safety Status — the server
+                  enforces it on both endpoints the map calls regardless. */}
+              {link.canViewLocation && (
+                <Pressable
+                  onPress={() =>
+                    navigation.navigate('LiveMap', {
+                      elderlyUserId: link.elderlyUserId,
+                      elderlyName: link.elderlyUser?.fullName || null,
+                    })
+                  }
+                  accessibilityRole="button"
+                  style={styles.zonesButton}
+                >
+                  <Text style={styles.zonesButtonText}>Live Map</Text>
+                </Pressable>
+              )}
+
               {link.canViewLocation && (
                 <Pressable
                   onPress={() =>

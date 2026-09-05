@@ -182,6 +182,17 @@ export function FamilySafetyScreen({ navigation, route }) {
                       {formatCoordinates(location.latitude, location.longitude)} · Open in Maps
                     </Text>
                   </Pressable>
+                  {/* The primary way into the live map. This screen already
+                      answers "are they okay" as a status; the map answers
+                      "where are they" as it changes, which coordinates on
+                      their own never could. */}
+                  <Pressable
+                    onPress={() => navigation.navigate('LiveMap', { elderlyUserId, elderlyName })}
+                    accessibilityRole="button"
+                    style={styles.mapButton}
+                  >
+                    <Text style={styles.mapButtonText}>Watch on Live Map</Text>
+                  </Pressable>
                 </>
               ) : (
                 <Text style={styles.cardMainText}>No location has been recorded yet.</Text>
@@ -256,6 +267,16 @@ const styles = StyleSheet.create({
   cardMainText: { fontSize: type.body, color: colors.text, fontWeight: '700' },
   cardMainTextMuted: { color: colors.warning },
   locationLink: { fontSize: type.small + 1, color: colors.primary, fontWeight: '700' },
+  mapButton: {
+    alignSelf: 'flex-start',
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md,
+    marginTop: spacing.sm / 2,
+  },
+  mapButtonText: { fontSize: type.body - 1, fontWeight: '800', color: colors.primary },
   alertRow: { flexDirection: 'row', justifyContent: 'space-between' },
   alertType: { fontSize: type.body - 1, fontWeight: '800', color: colors.danger },
   alertMeta: { fontSize: type.body - 1, color: colors.textMuted },
