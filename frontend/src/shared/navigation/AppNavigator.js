@@ -20,6 +20,7 @@ import { EmergencyContactsScreen } from '../../emergency/screens/EmergencyContac
 import { GeofencesScreen } from '../../emergency/screens/GeofencesScreen';
 import { GeofenceFormScreen } from '../../emergency/screens/GeofenceFormScreen';
 import { FamilySafetyScreen } from '../../emergency/screens/FamilySafetyScreen';
+import { FamilyLiveMapScreen } from '../../emergency/screens/FamilyLiveMapScreen';
 import { CaregiverSearchScreen } from '../../caregiver/screens/CaregiverSearchScreen';
 import { CaregiverDetailScreen } from '../../caregiver/screens/CaregiverDetailScreen';
 import { BookingFormScreen } from '../../caregiver/screens/BookingFormScreen';
@@ -88,6 +89,11 @@ function FamilyNavigator() {
       <Stack.Screen name="FallDetection" component={FallDetectionScreen} />
       <Stack.Screen name="FamilyLinks" component={FamilyLinksScreen} />
       <Stack.Screen name="SafetyStatus" component={FamilySafetyScreen} />
+      {/* Family only. An elderly user watching their own position live isn't
+          a thing this product has asked for, and the screen's permission model
+          (an active link with can_view_location) is written for a viewer who
+          isn't the subject. */}
+      <Stack.Screen name="LiveMap" component={FamilyLiveMapScreen} />
       <Stack.Screen name="Geofences" component={GeofencesScreen} />
       <Stack.Screen name="GeofenceForm" component={GeofenceFormScreen} />
       <Stack.Screen name="CaregiverSearch" component={CaregiverSearchScreen} />

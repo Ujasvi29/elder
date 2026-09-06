@@ -66,7 +66,7 @@ module.exports = {
     // over verbatim from the static app.json this file replaces.
     extra: {
       eas: {
-        projectId: '8f6b7f95-e78d-444e-aa7b-300fde1a5d53',
+        projectId: 'c89864ad-512c-4674-9258-236cb3b560f9',
       },
     },
     plugins: [

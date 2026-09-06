@@ -80,3 +80,30 @@ export function summarizeHistory(history) {
     currentlyText: history.currentlyInside ? 'Right now: inside the zone.' : 'Right now: outside the zone.',
   };
 }
+
+/**
+ * The same idea as formatAge, at a resolution live tracking actually needs:
+ * seconds. formatAge deliberately rounds to the roughest honest unit and
+ * calls anything under a minute "just now" — right for a zone's centre, wrong
+ * for a map that repolls every 20 seconds, where "just now" would sit
+ * unchanged through three polls and give no sign the marker is still being
+ * updated. This one counts in seconds under a minute ("15s ago") so the
+ * label visibly moves, which is itself the evidence that tracking is alive.
+ *
+ * Kept alongside formatAge rather than replacing it — the two are used for
+ * different jobs and the wording of each is load-bearing where it's used.
+ */
+export function formatFreshness(isoString, now = Date.now()) {
+  const seconds = Math.max(0, Math.round((now - new Date(isoString).getTime()) / 1000));
+
+  if (seconds < 60) return `${seconds}s ago`;
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}

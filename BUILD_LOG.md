@@ -1333,3 +1333,76 @@ The initial screen spec was "View — for caregivers, and read-only family; Edit
 ### Activity reports are qualitative only — vitals tracking is not built
 
 `activity_reports.vitals` is a JSONB column with no shape enforced anywhere in `validate.js` beyond "must be an object" — there's no schema for what a vitals reading looks like (blood pressure? temperature? blood sugar?), and no UI anywhere in this app that collects one. `ReportFormScreen` does not send `vitals` at all, same treatment as `photoUrls` (no upload exists either). Every report created through this app is text — summary, meals, medications, mood, sleep hours, concerns — never a structured vitals reading. **If the client's spec assumes vitals tracking (a real possibility for a caregiver product), that's unbuilt, not degraded** — it would need a real design (which vitals, what units, what ranges count as a concern) before a form makes sense, not a bolted-on generic key-value JSON editor. Flagged in the new API.md Activity Reports section as well.
+
+---
+
+## 2026-09-04 — Phase 3: the family live map, and why it is Leaflet in a WebView rather than react-native-maps
+
+Background tracking has been recording a position roughly every 90 seconds since 2026-08-16, and the only way for a family member to see any of it was `FamilySafetyScreen`'s Last Seen card — one line of coordinates and an "Open in Maps" link handing off to Google Maps for a single static point. The feature the tracking existed for was never actually built on the family side. This step builds it: `FamilyLiveMapScreen`, a map showing the elderly person's latest position, redrawn every 20 seconds, with their safe zones as circles around it.
+
+No new backend. `GET /emergency/locations/latest` and `GET /emergency/geofences` both already exist, both already take an `elderlyUserId` parameter, and both already gate a family caller through the same `can_view_location` check on `family_links`. This step adds a viewer over data the API was already handing out.
+
+### The map library decision, which went the opposite way from the plan
+
+**The initial plan was `react-native-maps` with `provider={null}` and an OSM `UrlTile` overlay** — the arrangement that gets OpenStreetMap tiles onto a native map with no Google Maps API key and no billing account. That was also the shape the 2026-08-16 step-1 entry anticipated when it deliberately deferred installing a map renderer ("Android needs a real Google Maps API key... an account decision, not a code one").
+
+**The objection raised against it, before any code was written:** `react-native-maps` on Android has no non-Google native provider. `provider={null}` does not opt out of Google on Android the way it opts into Apple Maps on iOS — the Android view it instantiates is Google's `MapView` regardless, and `mapType="none"` is what actually stops it requesting Google's own tiles, leaving the OSM `UrlTile` layer to supply all imagery. That arrangement is widely reported to work without an API key. "Widely reported" is not "verified," it still requires Google Play Services to be present on the device at all, and the only way to find out which way it went on this project's devices was to spend a build finding out.
+
+**The counter-proposal was Leaflet in a WebView, argued partly on it needing no native rebuild. That part was wrong, and checking it is what settled the decision.** `react-native-webview` is not in `frontend/package.json`, not in `node_modules`, and not a transitive dependency of anything already installed — Expo pins it at 13.15.0 for SDK 54, and it is itself a native module. Leaflet needed exactly the same fresh EAS build `react-native-maps` did. There was no build to be saved either way.
+
+**With build cost equal, the tiebreak is which approach has an unknown in it.** Leaflet renders OSM the same way any browser does — no Google code path, no Play Services requirement, no API key question, deterministic on any device. `react-native-maps` would have meant spending a build to discover whether the approach works at all, with a blank map as the failure mode. Leaflet means spending the same build to see a feature already known to render. **Built as Leaflet in a WebView.** `react-native-maps` remains a reasonable later swap if native gestures or performance ever justify it — the map is one self-contained screen plus one HTML document, not something threaded through the app.
+
+**Honest cost of the choice, recorded rather than glossed:** map gestures run through Leaflet's touch handling inside a WebView rather than a native map view, and every data update crosses the React Native/WebView boundary. At this screen's scale — one marker, one accuracy ring, a handful of zone circles, an update every 20 seconds — neither is close to a real cost. On a screen drawing hundreds of moving markers, both would be.
+
+### What was built
+
+- **`src/emergency/liveMapHtml.js`** — one static HTML document, Leaflet 1.9.4 pinned from unpkg (not `@latest`: a map that changes behaviour because a CDN moved is the kind of failure that gets blamed on this feature months later). No data is baked into the string and nothing user-controlled is ever interpolated into it; the marker, the accuracy ring and the zone circles all arrive afterwards through `injectJavaScript` calling `window.EC.*` with `JSON.stringify`'d arguments.
+- **`src/emergency/screens/FamilyLiveMapScreen.js`** — the React Native side: fetching, polling, staleness, follow mode, and every failure state.
+- **`formatFreshness` in `geofenceFormat.js`**, alongside the existing `formatAge` rather than replacing it. `formatAge` deliberately rounds to the roughest honest unit and calls anything under a minute "just now," which is right for a zone's centre and wrong for a map polling every 20 seconds — "just now" would sit unchanged through three consecutive polls and give no sign the screen is still alive. The new one counts seconds under a minute.
+- **Two entry points**, both behind the same `can_view_location` gate the rest of the family location surface uses: a "Watch on Live Map" button in `FamilySafetyScreen`'s Last Seen card (the primary one — that screen already answers "are they okay," the map answers "where are they, as it changes"), and a "Live Map" button per linked account on `FamilyLinksScreen`, next to Safety Status.
+- **`LiveMap` is registered in `FamilyNavigator` only**, not the elderly stack. An elderly user watching their own position live is not something this product has asked for, and the screen's permission model is written for a viewer who is not the subject.
+
+### Three deliberate decisions about telling the truth on a map
+
+**The age of the reading is always on screen, in seconds, and it counts up on its own between polls.** A map is uniquely good at implying "this is where she is right now" whether or not that is true — far better at implying it than a coordinate pair is. A separate 1-second ticker recomputes the header label independently of the 20-second poll, so a stalled poll shows as a number visibly climbing rather than a frozen one that still reads as fresh. The marker itself turns amber past 15 minutes, the same `FRESH_MINUTES` threshold and the same reasoning `FamilySafetyScreen` already uses.
+
+**A failed poll never clears the marker.** The last known position stays drawn, its age keeps climbing, and a banner says the update failed. Blanking the map on a dropped request would read as "she has disappeared," a far stronger claim than "the phone could not reach the server for twenty seconds."
+
+**The accuracy ring is drawn only when the reading carries an accuracy.** A fix reported as accurate to 100m and one accurate to 8m are materially different claims, and drawing both as the same dot overstates the precise one and hides the vague one. This matters more here than it might elsewhere: the 2026-08-27 entry established that `Balanced` accuracy returns a flat 100.00m ceiling from Android, and background tracking still requests `Balanced` on purpose (continuous all-day sampling, a real battery tradeoff) — so most points this map draws are 100m-accurate, and the ring says so.
+
+Following is on by default and switches off the moment the map is dragged, with a Recentre button appearing. Bound to Leaflet's `dragstart` alone: it is the one event only a hand produces, so the screen's own `panTo` never switches following off as a side effect of doing its job. Zoom is deliberately not bound — Leaflet gives no way to tell a pinch from a programmatic zoom, and wanting a closer look is not the same as wanting to stop following. Both intervals live inside `useFocusEffect`, so nothing polls a map nobody is looking at.
+
+Failure states are distinct rather than collapsed into one "something went wrong": a 403 says the link does not have location access and who can change it; a CDN failure says the map could not load and points at Safety Status for the coordinates; no readings at all says so plainly rather than showing an empty grey rectangle that looks identical to a person who has vanished.
+
+### What was verified without a build, and what still needs one
+
+`npx expo export --platform android` bundles cleanly at 1,082 modules (up from 1,005 at the 2026-08-16 step-2 entry — `react-native-webview` and its dependencies, plus the new screen), no unresolved imports. `npx expo install --check` reports dependencies up to date against SDK 54.
+
+**Beyond that, the map document itself was exercised for real rather than left as a claim.** Choosing Leaflet specifically because it renders the same way in any browser means the browser is a legitimate test surface for everything except the native bridge, so `LIVE_MAP_HTML` was served over localhost with a stub `window.ReactNativeWebView` standing in for the WebView, and driven exactly as the screen drives it. Confirmed there:
+
+- Leaflet loads from the pinned CDN and posts `{"type":"ready"}` back through the stub.
+- **24 OSM tile images actually loaded from `tile.openstreetmap.org`** — the tile fetch is real, not assumed.
+- `EC.setZones` with two zones and `EC.setElder` draw four SVG paths: two green safe-zone circles, the accuracy ring, and the marker. Screenshot matches the intended design, OSM attribution present in the corner.
+- Dragging the map posts `{"type":"panned"}` — the follow-off path works.
+- `stale: true` repaints the marker amber (`#B45309`); `accuracy: null` removes the accuracy ring (four paths down to three). `EC.recentre()` runs clean.
+- The CDN-failure path was tested by loading the same document with the Leaflet `<script>` tag stripped: it posts `{"type":"leaflet_failed"}` rather than sitting as a blank rectangle, which is what drives the screen's "Could not load the map" state.
+
+**Still needs the build:** everything on the React Native side of the boundary — that `injectJavaScript` delivers into this document on a real Android WebView, that `onMessage` receives what the stub received, that `source={{html, baseUrl}}` loads remote CDN and tile resources under Android's network policy, and that touch gestures behave through the WebView the way they do in Chrome. `react-native-webview` is a native module and no build carrying it exists yet.
+
+### OSM tile usage policy — a real constraint, not shipped as if settled
+
+The tile URL is `tile.openstreetmap.org`. OSM's tile usage policy does not permit a distributed application to point at their tile servers; this is fine for development and a demo, and needs a real tile host (MapTiler, Thunderforest, or self-hosted) before this app is given to people outside the team. The URL is a single constant at the top of `liveMapHtml.js` for exactly that reason. Flagged here rather than left to be discovered.
+
+### What else should go into the same build, checked because it was asked for
+
+Rather than spend one build per pending native change, the tree was audited for everything currently waiting on a rebuild:
+
+1. **`react-native-webview` 13.15.0** — this step.
+2. **The Expo patch bumps from `0e381b8` (2026-09-02)** — `expo` 54.0.37, `expo-constants` 18.0.14, `expo-file-system` 19.0.24, `@expo/metro-runtime` 6.1.2. Native side changed; no build since.
+3. **The EAS `projectId` changed in the same commit**, `c89864ad-512c-4674-9258-236cb3b560f9` → `8f6b7f95-e78d-444e-aa7b-300fde1a5d53`. Every installed dev client was built against the old project. Push tokens are project-scoped — `pushRegistration.js` reads `extra.eas.projectId` and passes it to `getExpoPushTokenAsync` — so tokens registered by any earlier build are dead against the new project. A rebuild is required before push works at all, and old `device_tokens` rows are stale.
+4. **Android FCM credentials for the new EAS project.** There is no `google-services.json` anywhere in the tree and no FCM reference in any file. Expo's push service needs FCM V1 credentials configured on the EAS project to deliver to an Android dev-client or standalone build, and the project just changed underneath that. A credentials task rather than a code change, but it has to happen before or alongside this build or push fails silently on device — the same failure shape as the API-URL and cleartext incidents, and worth checking directly rather than assuming.
+5. **`usesCleartextTraffic` has still never been verified in a shipped manifest.** The 2026-08-26 follow-up entry ends "no preview build has been produced against this fix yet," and that entry's own standing rule — after two consecutive fixes that looked right in source and were not in the APK — is to download the built artifact and grep `AndroidManifest.xml` rather than trust the source. If this build is a preview, that check is owed.
+6. **`expo-notifications` has no plugin configuration** — no notification icon, no colour. Both are manifest/config-plugin concerns, so changing them later costs another build. Either decide now or accept Android's default white square knowingly.
+7. **The SOS `Accuracy.High` change (2026-08-27) is implemented but has never been tested on a device.** `captureLocation.js:106` carries it. JS-only, so it needs no build of its own — but it is owed an outdoor SOS test against the 100.00m baseline and an indoor one, and this build is the opportunity to do both rather than waiting for another.
+
+Not in this build, and deliberately: removing `usesCleartextTraffic` before a production build. That stays open where the three existing warnings already put it.
