@@ -36,6 +36,9 @@ import { listGeofencesForUser } from './geofences.js';
 import { createGeofenceAlert, autoResolveGeofenceAlert } from './alerts.js';
 import { advanceFanout } from './notifications/fanout.js';
 import { haversineMeters, classify } from './geofenceMath.js';
+import { createFeedItem } from '../notifications/feedWriter.js';
+import { NOTIFICATION_EVENTS } from '../notifications/constants.js';
+import { listLinksForElderly } from '../family/links.js';
 
 // Applied when a reading has no accuracy_meters of its own to judge
 // confidence by — conservative enough to absorb ordinary consumer-GPS jitter
@@ -63,6 +66,22 @@ async function fireBreach(userId, geofence, direction, location) {
   advanceFanout(alert.id).catch((err) =>
     console.error(`Initial fanout failed for geofence alert ${alert.id}:`, err)
   );
+
+  listLinksForElderly(userId, 'active')
+    .then((links) => {
+      const familyUserIds = links.map((l) => l.family_user_id);
+      const allRecipients = [...new Set([userId, ...familyUserIds])];
+      createFeedItem({
+        recipientUserIds: allRecipients,
+        eventType: NOTIFICATION_EVENTS.ALERT_FIRED,
+        eventId: alert.id,
+        title: `Geofence ${direction === 'exit' ? 'Exit' : 'Entry'} Alert`,
+        body: `Geofence boundary breach detected for zone ${geofence.name}`,
+        data: { screen: 'AlertDetails', params: { id: alert.id } },
+        sendPush: false,
+      });
+    })
+    .catch((err) => console.error('Feed error for geofence breach:', err));
 }
 
 /**

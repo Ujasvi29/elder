@@ -1,12 +1,11 @@
-// ============================================================================
-// Caregiver Bookings Routes
-// ============================================================================
-
 import { Router } from 'express';
 import { requireAuth, requireRole } from '../../shared/auth/middleware.js';
 import { forbidden } from '../../shared/http/errors.js';
 import { hasManageCaregiversPermission } from '../../family/links.js';
 import { isAssignedCaregiver } from '../services/authorize.js';
+import { createFeedItem } from '../../notifications/feedWriter.js';
+import { NOTIFICATION_EVENTS } from '../../notifications/constants.js';
+import { query } from '../../shared/db/pool.js';
 import {
   validateCreateBooking,
   validateBookingStatusUpdate,
@@ -20,6 +19,11 @@ import {
 } from '../services/bookings.service.js';
 
 export const bookingsRouter = Router();
+
+async function getCaregiverUserId(caregiverId) {
+  const { rows } = await query(`SELECT user_id FROM caregivers WHERE id = $1`, [caregiverId]);
+  return rows[0]?.user_id ?? null;
+}
 
 // Elderly self, or family with hasManageCaregiversPermission, or admin —
 // booking a caregiver on someone's behalf. Caregiver role is excluded
@@ -45,6 +49,26 @@ bookingsRouter.post('/', requireAuth, requireRole('elderly', 'family', 'admin'),
   const data = validateCreateBooking(req.body);
   await requireBookingCreatePermission(req, data.elderlyUserId);
   const booking = await createBooking(data, req.user.id);
+
+  getCaregiverUserId(booking.caregiverId)
+    .then((caregiverUserId) => {
+      const candidates = [caregiverUserId, booking.elderlyUserId, booking.bookedByUserId];
+      const recipients = [...new Set(candidates.filter((uId) => uId && uId !== req.user.id))];
+
+      if (recipients.length > 0) {
+        createFeedItem({
+          recipientUserIds: recipients,
+          eventType: NOTIFICATION_EVENTS.BOOKING_CREATED,
+          eventId: booking.id,
+          title: 'Caregiver Booking Created',
+          body: `New caregiver booking created (${booking.status}).`,
+          data: { screen: 'BookingDetails', params: { id: booking.id } },
+          sendPush: true,
+        });
+      }
+    })
+    .catch((err) => console.error('Feed error for booking creation:', err));
+
   res.status(201).json({ status: 'ok', booking });
 });
 
@@ -68,5 +92,25 @@ bookingsRouter.patch('/:id/status', requireAuth, async (req, res) => {
   validateUuid(req.params.id, 'bookingId');
   const { status, cancellationReason } = validateBookingStatusUpdate(req.body);
   const booking = await updateBookingStatus(req.params.id, status, req.user, cancellationReason);
+
+  getCaregiverUserId(booking.caregiverId)
+    .then((caregiverUserId) => {
+      const candidates = [caregiverUserId, booking.elderlyUserId, booking.bookedByUserId];
+      const recipients = [...new Set(candidates.filter((uId) => uId && uId !== req.user.id))];
+
+      if (recipients.length > 0) {
+        createFeedItem({
+          recipientUserIds: recipients,
+          eventType: NOTIFICATION_EVENTS.BOOKING_STATUS_CHANGED,
+          eventId: booking.id,
+          title: `Caregiver Booking ${status.charAt(0).toUpperCase() + status.slice(1)}`,
+          body: `Booking status updated to ${status}.`,
+          data: { screen: 'BookingDetails', params: { id: booking.id } },
+          sendPush: true,
+        });
+      }
+    })
+    .catch((err) => console.error('Feed error for booking status update:', err));
+
   res.json({ status: 'ok', booking });
 });

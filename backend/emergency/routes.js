@@ -46,6 +46,9 @@ import { createLocation, toPublicLocation, findLatestLocation, listLocationsSinc
 import { registerDeviceToken } from './deviceTokens.js';
 import { advanceFanout } from './notifications/fanout.js';
 import { broadcastToFamily } from './notifications/broadcast.js';
+import { createFeedItem } from '../notifications/feedWriter.js';
+import { NOTIFICATION_EVENTS } from '../notifications/constants.js';
+import { listLinksForElderly } from '../family/links.js';
 import { ambulanceRouter } from './ambulance/routes.js';
 import { disasterRouter } from './disaster/routes.js';
 import {
@@ -162,6 +165,33 @@ emergencyRouter.post('/alerts', requireAuth, async (req, res) => {
     console.error(`Family broadcast failed for alert ${alert.id}:`, err)
   );
 
+  listLinksForElderly(req.user.id, 'active')
+    .then((links) => {
+      const familyUserIds = links.map((l) => l.family_user_id);
+      if (familyUserIds.length > 0) {
+        createFeedItem({
+          recipientUserIds: familyUserIds,
+          eventType: NOTIFICATION_EVENTS.ALERT_FIRED,
+          eventId: alert.id,
+          title: 'SOS Alert Triggered',
+          body: `Emergency SOS alert raised by ${req.user.full_name || 'Elderly user'}`,
+          data: { screen: 'AlertDetails', params: { id: alert.id } },
+          sendPush: false,
+        });
+      }
+    })
+    .catch((err) => console.error('Feed error SOS alert family:', err));
+
+  createFeedItem({
+    recipientUserIds: [req.user.id],
+    eventType: NOTIFICATION_EVENTS.ALERT_FIRED,
+    eventId: alert.id,
+    title: 'SOS Alert Activated',
+    body: 'Your emergency SOS alert was activated and family contacts have been notified.',
+    data: { screen: 'AlertDetails', params: { id: alert.id } },
+    sendPush: false,
+  });
+
   res.status(201).json({ status: 'ok', alert: toPublicAlert(alert) });
 });
 
@@ -191,6 +221,33 @@ const handleFallAlert = async (req, res) => {
   advanceFanout(alert.id).catch((err) =>
     console.error(`Initial fanout failed for fall alert ${alert.id}:`, err)
   );
+
+  listLinksForElderly(req.user.id, 'active')
+    .then((links) => {
+      const familyUserIds = links.map((l) => l.family_user_id);
+      if (familyUserIds.length > 0) {
+        createFeedItem({
+          recipientUserIds: familyUserIds,
+          eventType: NOTIFICATION_EVENTS.ALERT_FIRED,
+          eventId: alert.id,
+          title: 'Fall Detected',
+          body: `Fall alert detected for ${req.user.full_name || 'Elderly user'}`,
+          data: { screen: 'AlertDetails', params: { id: alert.id } },
+          sendPush: false,
+        });
+      }
+    })
+    .catch((err) => console.error('Feed error fall alert family:', err));
+
+  createFeedItem({
+    recipientUserIds: [req.user.id],
+    eventType: NOTIFICATION_EVENTS.ALERT_FIRED,
+    eventId: alert.id,
+    title: 'Fall Alert Recorded',
+    body: 'Fall alert was logged and emergency contacts notified.',
+    data: { screen: 'AlertDetails', params: { id: alert.id } },
+    sendPush: false,
+  });
 
   res.status(201).json({ status: 'ok', alert: toPublicAlert(alert) });
 };
@@ -232,6 +289,23 @@ emergencyRouter.post('/alerts/:id/cancel', requireAuth, async (req, res) => {
     throw conflict('alert_not_active', 'This alert is no longer active.');
   }
 
+  listLinksForElderly(alert.user_id, 'active')
+    .then((links) => {
+      const familyUserIds = links.map((l) => l.family_user_id).filter((uId) => uId !== req.user.id);
+      if (familyUserIds.length > 0) {
+        createFeedItem({
+          recipientUserIds: familyUserIds,
+          eventType: NOTIFICATION_EVENTS.ALERT_CANCELLED,
+          eventId: alert.id,
+          title: 'Alert Cancelled',
+          body: `Emergency alert was cancelled by ${req.user.full_name || 'user'}`,
+          data: { screen: 'AlertDetails', params: { id: alert.id } },
+          sendPush: true,
+        });
+      }
+    })
+    .catch((err) => console.error('Feed error cancel alert:', err));
+
   res.json({ status: 'ok', alert: toPublicAlert(updated) });
 });
 
@@ -262,6 +336,24 @@ emergencyRouter.post('/alerts/:id/resolve', requireAuth, async (req, res) => {
   if (!updated) {
     throw conflict('alert_not_active', 'This alert is no longer active.');
   }
+
+  listLinksForElderly(alert.user_id, 'active')
+    .then((links) => {
+      const allStakeholders = [alert.user_id, ...links.map((l) => l.family_user_id)];
+      const recipients = allStakeholders.filter((uId) => uId !== req.user.id);
+      if (recipients.length > 0) {
+        createFeedItem({
+          recipientUserIds: recipients,
+          eventType: NOTIFICATION_EVENTS.ALERT_RESOLVED,
+          eventId: alert.id,
+          title: 'Alert Resolved',
+          body: `Emergency alert was resolved by ${req.user.full_name || 'user'}`,
+          data: { screen: 'AlertDetails', params: { id: alert.id } },
+          sendPush: true,
+        });
+      }
+    })
+    .catch((err) => console.error('Feed error resolve alert:', err));
 
   res.json({ status: 'ok', alert: toPublicAlert(updated) });
 });
@@ -299,6 +391,24 @@ emergencyRouter.post('/alerts/:id/acknowledge', requireAuth, async (req, res) =>
       alert: toPublicAlert(current),
     });
   }
+
+  listLinksForElderly(alert.user_id, 'active')
+    .then((links) => {
+      const allStakeholders = [alert.user_id, ...links.map((l) => l.family_user_id)];
+      const recipients = allStakeholders.filter((uId) => uId !== req.user.id);
+      if (recipients.length > 0) {
+        createFeedItem({
+          recipientUserIds: recipients,
+          eventType: NOTIFICATION_EVENTS.ALERT_ACKNOWLEDGED,
+          eventId: alert.id,
+          title: 'Alert Acknowledged',
+          body: `Emergency alert acknowledged by ${req.user.full_name || 'family member'}`,
+          data: { screen: 'AlertDetails', params: { id: alert.id } },
+          sendPush: true,
+        });
+      }
+    })
+    .catch((err) => console.error('Feed error acknowledge alert:', err));
 
   res.json({ status: 'ok', alert: toPublicAlert(updated) });
 });

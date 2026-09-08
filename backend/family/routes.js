@@ -27,6 +27,8 @@ import { Router } from 'express';
 import { badRequest, notFound, forbidden, conflict } from '../shared/http/errors.js';
 import { requireAuth } from '../shared/auth/middleware.js';
 import { findUserByPhone, findUserById, toPublicUser } from '../shared/auth/users.js';
+import { createFeedItem } from '../notifications/feedWriter.js';
+import { NOTIFICATION_EVENTS } from '../notifications/constants.js';
 import {
   toPublicFamilyLink,
   findLinkById,
@@ -136,6 +138,16 @@ familyRouter.post('/invites', requireAuth, async (req, res) => {
     });
   }
 
+  createFeedItem({
+    recipientUserIds: [invitee.id],
+    eventType: NOTIFICATION_EVENTS.INVITE_RECEIVED,
+    eventId: link.id,
+    title: 'Family Invite Received',
+    body: `You received a family link invitation from ${req.user.full_name || 'a user'}.`,
+    data: { screen: 'FamilyInvites', params: { id: link.id } },
+    sendPush: true,
+  });
+
   res.status(201).json({ status: 'ok', link: toPublicFamilyLink(link) });
 });
 
@@ -162,6 +174,16 @@ familyRouter.post('/invites/:id/accept', requireAuth, async (req, res) => {
     throw conflict('invite_not_pending', 'This invite is no longer pending.');
   }
 
+  createFeedItem({
+    recipientUserIds: [link.elderly_user_id],
+    eventType: NOTIFICATION_EVENTS.INVITE_ACCEPTED,
+    eventId: link.id,
+    title: 'Family Invite Accepted',
+    body: `${req.user.full_name || 'Family member'} accepted your family invitation.`,
+    data: { screen: 'FamilyLinks', params: { id: link.id } },
+    sendPush: true,
+  });
+
   res.json({ status: 'ok', link: toPublicFamilyLink(updated) });
 });
 
@@ -183,6 +205,16 @@ familyRouter.post('/invites/:id/decline', requireAuth, async (req, res) => {
   if (!updated) {
     throw conflict('invite_not_pending', 'This invite is no longer pending.');
   }
+
+  createFeedItem({
+    recipientUserIds: [link.elderly_user_id],
+    eventType: NOTIFICATION_EVENTS.INVITE_DECLINED,
+    eventId: link.id,
+    title: 'Family Invite Declined',
+    body: `${req.user.full_name || 'Family member'} declined your family invitation.`,
+    data: { screen: 'FamilyLinks', params: { id: link.id } },
+    sendPush: true,
+  });
 
   res.json({ status: 'ok', link: toPublicFamilyLink(updated) });
 });
@@ -215,24 +247,25 @@ familyRouter.post('/links/:id/revoke', requireAuth, async (req, res) => {
     throw conflict('link_not_active', 'This family link is not active.');
   }
 
-  // No-op unless POST .../emergency-contact was used on this link at some
-  // point — see links.js. Deliberate default regardless: leaving a
-  // phone-escalation path open to someone whose dashboard access was just
-  // pulled for cause is the wrong default for an emergency product.
   await deactivateLinkedContact(updated.elderly_user_id, updated.family_user_id);
+
+  const targetRecipient = req.user.id === link.elderly_user_id ? link.family_user_id : link.elderly_user_id;
+  createFeedItem({
+    recipientUserIds: [targetRecipient],
+    eventType: NOTIFICATION_EVENTS.LINK_REVOKED,
+    eventId: link.id,
+    title: 'Family Link Revoked',
+    body: `Family link connection was revoked by ${req.user.full_name || 'user'}.`,
+    data: { screen: 'FamilyLinks', params: { id: link.id } },
+    sendPush: true,
+  });
 
   res.json({ status: 'ok', link: toPublicFamilyLink(updated) });
 });
 
 // ---------------------------------------------------------------------------
 // PATCH /family/links/:id — elderly user only. Edits an active link's
-// permission fields without revoking it outright — how the elderly user
-// steps a family member down from 'manage'/'owner' (for instance, after
-// granting geofence-management access — Phase 3 step 3) without losing
-// dashboard access or being phoned as an emergency contact along with it.
-// The elderly user can already see who holds which tier via GET
-// /family/links (permissionLevel, joined with familyUser's name/phone); this
-// is the other half — being able to act on what they see.
+// permission fields without revoking it outright
 // ---------------------------------------------------------------------------
 
 familyRouter.patch('/links/:id', requireAuth, async (req, res) => {
@@ -251,14 +284,21 @@ familyRouter.patch('/links/:id', requireAuth, async (req, res) => {
     throw conflict('link_not_active', 'This family link is not active.');
   }
 
+  createFeedItem({
+    recipientUserIds: [link.family_user_id],
+    eventType: NOTIFICATION_EVENTS.PERMISSIONS_CHANGED,
+    eventId: link.id,
+    title: 'Family Permissions Updated',
+    body: `Your access permissions for the elderly care account have been updated.`,
+    data: { screen: 'FamilyLinks', params: { id: link.id } },
+    sendPush: true,
+  });
+
   res.json({ status: 'ok', link: toPublicFamilyLink(updated) });
 });
 
 // ---------------------------------------------------------------------------
 // GET /family/links — the caller's own links, from whichever side they're on.
-// An elderly caller sees who has (or is pending) access to their account; a
-// family caller sees which elderly accounts they're linked to, including
-// invites still awaiting their response (status=pending).
 // ---------------------------------------------------------------------------
 
 familyRouter.get('/links', requireAuth, async (req, res) => {
@@ -273,16 +313,7 @@ familyRouter.get('/links', requireAuth, async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// POST /family/links/:id/emergency-contact — the deliberate action that
-// promotes an active link to emergency-contact status. Separate from accept
-// on purpose: viewing the dashboard and being phoned during SOS are different
-// permissions, so making the second one happen has to be its own choice, not
-// a side effect of the first.
-//
-// Permitted: the elderly user, or a family member with can_manage_contacts on
-// an active link to that same elderly user (hasManageContactsPermission
-// covers both — it returns true for the elderly user themselves without a
-// row to check).
+// POST /family/links/:id/emergency-contact — promote link to contact
 // ---------------------------------------------------------------------------
 
 familyRouter.post('/links/:id/emergency-contact', requireAuth, async (req, res) => {
@@ -302,10 +333,6 @@ familyRouter.post('/links/:id/emergency-contact', requireAuth, async (req, res) 
 
   const familyUser = toPublicUser(await findUserById(link.family_user_id));
 
-  // App-level pre-check for a friendlier error than the raw uq_contact_per_user
-  // violation — uq_contact_per_user is still the real backstop (see the catch
-  // below): this is a query-then-insert, so a concurrent request could still
-  // race past this check.
   const existingContact = await findContactByPhone(link.elderly_user_id, familyUser.phone);
   if (existingContact) {
     throw conflict(
@@ -338,7 +365,15 @@ familyRouter.post('/links/:id/emergency-contact', requireAuth, async (req, res) 
     throw err;
   }
 
-  // One-time copy, never live-synced — if this family member later changes
-  // their phone or email, this row does not update. See BUILD_LOG.md.
+  createFeedItem({
+    recipientUserIds: [link.family_user_id],
+    eventType: NOTIFICATION_EVENTS.PROMOTED_TO_CONTACT,
+    eventId: link.id,
+    title: 'Promoted to Emergency Contact',
+    body: `You have been added as an emergency contact for an elderly user.`,
+    data: { screen: 'EmergencyContacts', params: { id: contact.id } },
+    sendPush: true,
+  });
+
   res.status(201).json({ status: 'ok', contact: toPublicContact(contact) });
 });
