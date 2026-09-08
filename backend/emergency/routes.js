@@ -41,9 +41,12 @@ import {
   findFamilyLink,
   listActiveFamilyAlerts,
   listFamilyAlertHistory,
+  listAllAlerts,
+  findAlertForAdmin,
 } from './alerts.js';
+import { validateAlertListQuery, validateUuid } from '../admin/services/validate.js';
 import { createLocation, toPublicLocation, findLatestLocation, listLocationsSince } from './locations.js';
-import { registerDeviceToken } from './deviceTokens.js';
+import { registerDeviceToken, deactivateDeviceTokenForUser } from './deviceTokens.js';
 import { advanceFanout } from './notifications/fanout.js';
 import { broadcastToFamily } from './notifications/broadcast.js';
 import { createFeedItem } from '../notifications/feedWriter.js';
@@ -79,6 +82,7 @@ import {
   validateAttachLocationBody,
   validateCreateLocationBody,
   validateRegisterDeviceTokenBody,
+  validateDeactivateDeviceTokenBody,
   validateCreateContactBody,
   validateContactsListQuery,
   validateUpdateContactBody,
@@ -265,6 +269,40 @@ emergencyRouter.get('/alerts', requireAuth, async (req, res) => {
 
   res.json({ status: 'ok', count: alerts.length, alerts: alerts.map(toPublicAlert) });
 });
+
+// ---------------------------------------------------------------------------
+// GET /emergency/admin/alerts — platform-wide alert overview
+// ---------------------------------------------------------------------------
+
+emergencyRouter.get('/admin/alerts', requireAuth, requireRole('admin'), async (req, res) => {
+  const filters = validateAlertListQuery(req.query);
+  const result = await listAllAlerts(filters);
+
+  res.json({
+    status: 'ok',
+    total: result.total,
+    page: result.page,
+    limit: result.limit,
+    count: result.alerts.length,
+    alerts: result.alerts,
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /emergency/admin/alerts/:id — single alert detail
+// ---------------------------------------------------------------------------
+
+emergencyRouter.get('/admin/alerts/:id', requireAuth, requireRole('admin'), async (req, res) => {
+  validateUuid(req.params.id, 'alertId');
+  const alert = await findAlertForAdmin(req.params.id);
+
+  if (!alert) {
+    throw notFound('alert_not_found', 'No alert with that id.');
+  }
+
+  res.json({ status: 'ok', alert });
+});
+
 
 // ---------------------------------------------------------------------------
 // POST /emergency/alerts/:id/cancel — owner only
@@ -521,6 +559,18 @@ emergencyRouter.post('/device-tokens', requireAuth, async (req, res) => {
   const deviceToken = validateRegisterDeviceTokenBody(req.body);
   const row = await registerDeviceToken(req.user.id, deviceToken);
   res.status(201).json({ status: 'ok', deviceToken: row });
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /emergency/device-tokens — deactivate this device's push token on logout.
+// Scoped strictly to (expoPushToken, req.user.id) so a caller cannot deactivate
+// tokens belonging to other users or other devices.
+// ---------------------------------------------------------------------------
+
+emergencyRouter.delete('/device-tokens', requireAuth, async (req, res) => {
+  const { expoPushToken } = validateDeactivateDeviceTokenBody(req.body);
+  const deactivated = await deactivateDeviceTokenForUser(req.user.id, expoPushToken);
+  res.json({ status: 'ok', deactivated });
 });
 
 // ---------------------------------------------------------------------------

@@ -11,7 +11,7 @@
 import { useEffect } from 'react';
 
 import { useAuth } from '../../shared/auth/AuthContext';
-import { registerForPushNotifications } from '../../shared/notifications/pushRegistration';
+import { registerForPushNotifications, setupPushTokenRotationListener } from '../../shared/notifications/pushRegistration';
 import { registerSosNotificationCategory, registerSosAcknowledgeListener } from './alertNotifications';
 
 export function NotificationsBridge() {
@@ -22,9 +22,13 @@ export function NotificationsBridge() {
 
     registerSosNotificationCategory();
     registerForPushNotifications();
-    const subscription = registerSosAcknowledgeListener();
+    const sosSubscription = registerSosAcknowledgeListener();
+    const rotationSubscription = setupPushTokenRotationListener();
 
-    return () => subscription.remove();
+    return () => {
+      sosSubscription?.remove();
+      rotationSubscription?.remove();
+    };
   }, [isSignedIn]);
 
   return null;

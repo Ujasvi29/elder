@@ -159,6 +159,20 @@ CREATE TRIGGER trg_device_tokens_updated_at
     BEFORE UPDATE ON device_tokens
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+
+-- Pending Expo push tickets tracked for asynchronous receipt reconciliation.
+-- Populated on successful ticket return from Expo push API; removed once
+-- receipt status is verified or ticket expires after 24h.
+CREATE TABLE push_receipt_tickets (
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    ticket_id         TEXT             NOT NULL UNIQUE,
+    expo_push_token   TEXT             NOT NULL,
+    user_id           UUID             REFERENCES users (id) ON DELETE CASCADE,
+    created_at        TIMESTAMPTZ      NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_push_receipt_tickets_created_at ON push_receipt_tickets (created_at);
+
 -- ============================================================================
 -- EMERGENCY MODULE
 -- ============================================================================

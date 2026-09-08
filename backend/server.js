@@ -13,6 +13,7 @@ import { config } from './shared/config/env.js';
 import { checkConnection, closePool } from './shared/db/pool.js';
 import { startEscalationScheduler, stopEscalationScheduler } from './emergency/notifications/scheduler.js';
 import { startLocationRetentionScheduler, stopLocationRetentionScheduler } from './emergency/locationRetentionScheduler.js';
+import { startReceiptReconciliationScheduler, stopReceiptReconciliationScheduler } from './notifications/receiptReconciler.js';
 
 const server = await start();
 
@@ -33,6 +34,7 @@ async function start() {
 
   startEscalationScheduler();
   startLocationRetentionScheduler();
+  startReceiptReconciliationScheduler();
 
   return listener;
 }
@@ -44,6 +46,7 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
     console.log(`\n${signal} received, shutting down.`);
     stopEscalationScheduler();
     stopLocationRetentionScheduler();
+    stopReceiptReconciliationScheduler();
     server.close(async () => {
       await closePool();
       process.exit(0);

@@ -16,6 +16,7 @@ import { caregiverRouter } from './caregiver/routes/index.js';
 import { emergencyRouter } from './emergency/routes.js';
 import { familyRouter } from './family/routes.js';
 import { notificationsRouter } from './notifications/routes.js';
+import { adminRouter } from './admin/routes/index.js';
 export const app = express();
 
 // Trust the proxy hop count in production so req.ip is the real client address
@@ -52,6 +53,7 @@ app.use('/caregiver', caregiverRouter);
 app.use('/emergency', emergencyRouter);
 app.use('/family', familyRouter);
 app.use('/notifications', notificationsRouter);
+app.use('/admin', adminRouter);
 
 // Anything else is not a route yet.
 app.use((req, res) => {

@@ -157,8 +157,20 @@ export function FamilyHomeScreen({ navigation }) {
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        <Text style={styles.title}>Family dashboard</Text>
-        <Text style={styles.subtitle}>Signed in as {user?.fullName}</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.title}>Family dashboard</Text>
+            <Text style={styles.subtitle}>Signed in as {user?.fullName}</Text>
+          </View>
+          <Pressable
+            style={styles.notificationBellButton}
+            onPress={() => navigation.navigate('NotificationFeed')}
+            accessibilityRole="button"
+            accessibilityLabel="Notifications feed"
+          >
+            <Text style={{ fontSize: 22 }}>🔔</Text>
+          </Pressable>
+        </View>
 
         <Pressable
           style={styles.familyLinksButton}
@@ -522,6 +534,15 @@ const styles = StyleSheet.create({
   historyCardCancelled: { backgroundColor: colors.surface, borderColor: colors.border },
   historyMeta: { fontSize: type.small, color: colors.textMuted },
   historyEndedBy: { fontSize: type.small, color: colors.text, fontWeight: '600' },
+  notificationBellButton: {
+    padding: spacing.sm,
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   signOutButton: { alignItems: 'center', paddingVertical: spacing.sm },
   signOutText: { fontSize: type.small, color: colors.textMuted },
 });

@@ -23,6 +23,7 @@ import { configureApiClient } from '../api/client';
 import * as authApi from '../api/auth';
 import { clearTokens, loadTokens, saveTokens } from './tokenStore';
 import { disableBackgroundTrackingSilently } from '../location/backgroundTracking';
+import { unregisterForPushNotifications } from '../notifications/pushRegistration';
 
 const AuthContext = createContext(null);
 
@@ -145,6 +146,12 @@ export function AuthProvider({ children }) {
           // Offline, or the token was already revoked. Neither changes what
           // happens next.
         }
+
+        // Deactivate this device's push token before clearing the session.
+        // Must happen while tokens.current still holds a valid access token
+        // so the authenticated DELETE call can attach a Bearer header.
+        // Fire-and-forget: a failed deactivation must never block logout.
+        await unregisterForPushNotifications();
 
         // Same reasoning as onSessionEnded above: no session, no business
         // running a location-tracking foreground service.

@@ -7,8 +7,10 @@
 // ============================================================================
 
 import { query } from '../shared/db/pool.js';
-import { listActiveDeviceTokensForUser, deactivateDeviceToken } from '../emergency/notifications/contacts.js';
+import { listActiveDeviceTokensForUser } from '../emergency/notifications/contacts.js';
+import { deactivateStaleToken } from '../emergency/deviceTokens.js';
 import * as pushProvider from '../emergency/notifications/providers/push.js';
+import { recordPushTicket } from './receiptReconciler.js';
 
 /**
  * Creates notification_feed rows for specified recipients.
@@ -56,13 +58,19 @@ export async function createFeedItem({
           const tokens = await listActiveDeviceTokensForUser(recipientId);
           for (const tokenRow of tokens) {
             const pushResult = await pushProvider.send({
-              destination: tokenRow.token,
+              destination: tokenRow.expo_push_token,
               title,
               body: body || title,
               data: data || {},
             });
-            if (!pushResult.success && pushResult.staleToken) {
-              await deactivateDeviceToken(tokenRow.id).catch(() => {});
+            if (pushResult.success && pushResult.providerMessageId) {
+              await recordPushTicket({
+                ticketId: pushResult.providerMessageId,
+                expoPushToken: tokenRow.expo_push_token,
+                userId: recipientId,
+              });
+            } else if (!pushResult.success && pushResult.staleToken) {
+              await deactivateStaleToken(tokenRow.expo_push_token, { reason: 'DeviceNotRegistered' }).catch(() => {});
             }
           }
         } catch (pushErr) {

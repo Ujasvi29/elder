@@ -26,6 +26,7 @@ import { recordNotification } from './records.js';
 import { buildAlertMessage } from './message.js';
 import { getAlertWithOwnerName } from './fanout.js';
 import * as pushProvider from './providers/push.js';
+import { recordPushTicket } from '../../notifications/receiptReconciler.js';
 
 async function listActiveFamilyMemberIds(elderlyUserId) {
   const { rows } = await query(
@@ -60,6 +61,14 @@ export async function broadcastToFamily(alertId) {
         result = await pushProvider.send({ destination: token.expo_push_token, ...message });
       } catch (err) {
         result = { success: false, errorMessage: err.message };
+      }
+
+      if (result.success && result.providerMessageId) {
+        await recordPushTicket({
+          ticketId: result.providerMessageId,
+          expoPushToken: token.expo_push_token,
+          userId: familyUserId,
+        });
       }
 
       if (result.staleToken) {
