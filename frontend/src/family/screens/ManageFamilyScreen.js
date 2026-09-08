@@ -66,6 +66,7 @@ export function ManageFamilyScreen({ navigation }) {
   const [invitePhone, setInvitePhone] = useState('');
   const [inviteRelationship, setInviteRelationship] = useState('');
   const [inviteCanViewLocation, setInviteCanViewLocation] = useState(true);
+  const [inviteCanManageCaregivers, setInviteCanManageCaregivers] = useState(false);
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState(null);
   const [inviteFieldErrors, setInviteFieldErrors] = useState({});
@@ -115,10 +116,12 @@ export function ManageFamilyScreen({ navigation }) {
         phone: invitePhone.trim(),
         relationship: inviteRelationship.trim() || undefined,
         canViewLocation: inviteCanViewLocation,
+        canManageCaregivers: inviteCanManageCaregivers,
       });
       setInvitePhone('');
       setInviteRelationship('');
       setInviteCanViewLocation(true);
+      setInviteCanManageCaregivers(false);
       setInviteOpen(false);
       setBanner({ kind: 'success', text: 'Invite sent. They will see it once they open ElderCare.' });
       await load({ silent: true });
@@ -332,6 +335,21 @@ export function ManageFamilyScreen({ navigation }) {
                 />
               </View>
 
+              <View style={styles.toggleRow}>
+                <View style={styles.toggleTextGroup}>
+                  <Text style={styles.toggleLabel}>They can manage caregivers</Text>
+                  <Text style={styles.toggleHint}>
+                    Turn this on to let them book caregivers and manage care plans for you.
+                  </Text>
+                </View>
+                <Switch
+                  value={inviteCanManageCaregivers}
+                  onValueChange={setInviteCanManageCaregivers}
+                  trackColor={{ false: colors.border, true: colors.primary }}
+                  accessibilityLabel="They can manage caregivers"
+                />
+              </View>
+
               <View style={styles.inviteFormButtons}>
                 <Pressable
                   style={({ pressed }) => [styles.inviteCancelButton, pressed && styles.inviteCancelButtonPressed]}
@@ -339,6 +357,7 @@ export function ManageFamilyScreen({ navigation }) {
                     setInviteOpen(false);
                     setInviteError(null);
                     setInviteFieldErrors({});
+                    setInviteCanManageCaregivers(false);
                   }}
                   accessibilityRole="button"
                 >

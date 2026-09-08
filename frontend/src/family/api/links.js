@@ -22,14 +22,17 @@ import { apiRequest } from '../../shared/api/client';
  * @param {string} [input.relationship]       free text, e.g. "daughter"
  * @param {boolean} [input.canViewLocation]   default true — the elderly user
  *   chooses this at invite time, see ManageFamilyScreen
+ * @param {boolean} [input.canManageCaregivers] default false — whether they can
+ *   book and manage caregivers
  */
-export function sendInvite({ phone, relationship, canViewLocation }) {
+export function sendInvite({ phone, relationship, canViewLocation, canManageCaregivers }) {
   return apiRequest('/family/invites', {
     method: 'POST',
     body: {
       phone,
       relationship: relationship || undefined,
       canViewLocation: canViewLocation ?? undefined,
+      canManageCaregivers: canManageCaregivers ?? undefined,
     },
   });
 }
