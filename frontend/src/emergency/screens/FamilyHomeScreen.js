@@ -385,20 +385,20 @@ export function FamilyHomeScreen({ navigation }) {
                 </Pressable>
               )}
 
-              {link.canManageCaregivers && (
-                <Pressable
-                  onPress={() =>
-                    navigation.navigate('CaregiverSearch', {
-                      elderlyUserId: link.elderlyUserId,
-                      elderlyName: link.elderlyUser?.fullName || null,
-                    })
-                  }
-                  accessibilityRole="button"
-                  style={styles.linkActionButton}
-                >
-                  <Text style={styles.linkActionButtonText}>Find a Caregiver</Text>
-                </Pressable>
-              )}
+              {/* Any active link may book — no in-app payment, so booking
+                  isn't behind canManageCaregivers (bookings.routes.js). */}
+              <Pressable
+                onPress={() =>
+                  navigation.navigate('CaregiverSearch', {
+                    elderlyUserId: link.elderlyUserId,
+                    elderlyName: link.elderlyUser?.fullName || null,
+                  })
+                }
+                accessibilityRole="button"
+                style={styles.linkActionButton}
+              >
+                <Text style={styles.linkActionButtonText}>Find a Caregiver</Text>
+              </Pressable>
 
               {link.canManageCaregivers && (
                 <Pressable

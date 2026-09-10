@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { requireAuth, requireRole } from '../../shared/auth/middleware.js';
 import { forbidden } from '../../shared/http/errors.js';
-import { hasManageCaregiversPermission } from '../../family/links.js';
+import { findActiveLink, hasManageCaregiversPermission } from '../../family/links.js';
 import { isAssignedCaregiver } from '../services/authorize.js';
 import { createFeedItem } from '../../notifications/feedWriter.js';
 import { NOTIFICATION_EVENTS } from '../../notifications/constants.js';
@@ -25,12 +25,15 @@ async function getCaregiverUserId(caregiverId) {
   return rows[0]?.user_id ?? null;
 }
 
-// Elderly self, or family with hasManageCaregiversPermission, or admin —
-// booking a caregiver on someone's behalf. Caregiver role is excluded
+// Elderly self, any family member with an active link, or admin — booking a
+// caregiver on someone's behalf. Deliberately not can_manage_caregivers:
+// there is no in-app payment, a booking only requests the caregiver and
+// payment is arranged offline, so it commits no money. Everything else in
+// the caregiver module stays behind that flag. Caregiver role is excluded
 // already at requireRole below.
 async function requireBookingCreatePermission(req, elderlyUserId) {
   if (req.user.id === elderlyUserId || req.user.role === 'admin') return;
-  if (await hasManageCaregiversPermission(req.user.id, elderlyUserId)) return;
+  if (await findActiveLink(req.user.id, elderlyUserId)) return;
   throw forbidden('not_permitted', 'You are not permitted to book a caregiver for this account.');
 }
 

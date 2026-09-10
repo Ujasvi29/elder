@@ -9,10 +9,12 @@
 // orphan that history or need ON DELETE SET NULL to erase which contact a
 // past alert actually notified. fanout.js already reads only is_active = TRUE
 // contacts, so a soft-deleted row simply stops being tried without losing the
-// audit trail. There is no way to undo a delete through this API — a phone
-// number that was deleted and re-added collides with uq_contact_per_user and
-// is reported as validation_failed, same as any other duplicate; only direct
-// database access can revive the original row.
+// audit trail. There is no way to undo a delete through POST /emergency/contacts
+// — a phone number that was deleted and re-added collides with
+// uq_contact_per_user and is reported as contact_already_exists, same as any
+// other duplicate. The one path that does revive a row is escalating a family
+// link (see linkContactToUser below), because that toggle has to be able to
+// turn back on after it was turned off.
 // ============================================================================
 
 import { query } from '../shared/db/pool.js';
@@ -111,6 +113,22 @@ export async function createContact({
     [userId, contactUserId, fullName, phone, email, relationship, priority, notifyBySms, notifyByCall, notifyByPush]
   );
   return rows[0];
+}
+
+/**
+ * The escalate-a-link path's answer to a phone number that is already on
+ * this user's list — a hand-entered row for the same person (contact_user_id
+ * null), or one soft-deleted when "also call them in an emergency" was
+ * turned off. uq_contact_per_user rules out inserting a second row, so this
+ * points the existing one at the linked account and makes it active again.
+ * Name, priority and notify flags are left as they were.
+ */
+export async function linkContactToUser(id, contactUserId) {
+  const { rows } = await query(
+    `UPDATE emergency_contacts SET contact_user_id = $2, is_active = TRUE WHERE id = $1 RETURNING *`,
+    [id, contactUserId]
+  );
+  return rows[0] ?? null;
 }
 
 /**

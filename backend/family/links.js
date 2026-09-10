@@ -28,8 +28,9 @@ export function toPublicFamilyLink(row) {
     canViewLocation: row.can_view_location,
     canManageContacts: row.can_manage_contacts,
     // Enforced by caregiver module routes via hasManageCaregiversPermission —
-    // a family member must have this true on their active link to book
-    // or manage caregivers on the elderly person's behalf.
+    // a family member must have this true on their active link to manage
+    // caregivers on the elderly person's behalf. Creating a booking is the
+    // exception: any active link may (bookings.routes.js).
     canManageCaregivers: row.can_manage_caregivers,
     canAcknowledgeAlerts: row.can_acknowledge_alerts,
     status: row.status,
@@ -265,7 +266,8 @@ export async function hasManageGeofencesPermission(actorUserId, elderlyUserId) {
 /**
  * Read+write access to the caregiver module (bookings, schedules, care
  * plans, tasks, activity reports, verifying attendance) on an elderly user's
- * behalf: the elderly user themselves, or a family member with an active
+ * behalf — except creating a booking, which bookings.routes.js allows for
+ * any active link: the elderly user themselves, or a family member with an active
  * link and can_manage_caregivers = true. One flag rather than the
  * view/manage split geofences uses — the caregiver module has no separate
  * "can see but not act" tier today, only "participates in this person's

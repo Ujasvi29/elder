@@ -149,7 +149,7 @@ You would want a helpful neighbour called during an emergency without granting t
 | `permission_level` | `family_permission` enum | NOT NULL, default `'view'` | `view`, `manage`, or `owner`. A coarse label used for display and for defaults; the fine-grained booleans below are what the API actually enforces. |
 | `can_view_location` | BOOLEAN | NOT NULL, default TRUE | May see live position and location history. **The most sensitive permission in the product** — it is the difference between care and surveillance. |
 | `can_manage_contacts` | BOOLEAN | NOT NULL, default FALSE | May add or remove emergency contacts. Off by default: changing who gets called in an emergency should be a deliberate grant. |
-| `can_manage_caregivers` | BOOLEAN | NOT NULL, default FALSE | May book, cancel and pay for caregivers. Off by default because it commits money. |
+| `can_manage_caregivers` | BOOLEAN | NOT NULL, default FALSE | May manage care plans, schedules, tasks and visits, and see bookings others made. Booking itself needs only an active link — there is no in-app payment, so a booking request commits no money. |
 | `can_acknowledge_alerts` | BOOLEAN | NOT NULL, default TRUE | May mark an alert as seen and being handled. On by default — anyone trusted enough to be linked should be able to respond. |
 | `status` | `link_status` enum | NOT NULL, default `'pending'` | `pending`, `active`, `revoked`. **A link does not grant anything until it is `active`.** This is what stops someone adding themselves to a stranger's account. |
 | `invited_by` | UUID | FK → `users(id)` ON DELETE SET NULL | Who created the invitation. Audit trail for "how did this person get access?". |
