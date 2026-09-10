@@ -52,7 +52,7 @@ export function RegisterScreen({ navigation }) {
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
-  const [selectedRole, setSelectedRole] = useState('elderly');
+  const [selectedRole, setSelectedRole] = useState(null);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -346,10 +346,10 @@ export function RegisterScreen({ navigation }) {
               style={({ pressed }) => [
                 styles.submitButton,
                 pressed && styles.submitButtonPressed,
-                busy && styles.submitButtonDisabled,
+                (busy || !selectedRole) && styles.submitButtonDisabled,
               ]}
               onPress={handleRegister}
-              disabled={busy}
+              disabled={busy || !selectedRole}
               accessibilityRole="button"
               accessibilityLabel="Create account"
             >

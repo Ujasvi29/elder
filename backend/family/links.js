@@ -27,10 +27,9 @@ export function toPublicFamilyLink(row) {
     permissionLevel: row.permission_level,
     canViewLocation: row.can_view_location,
     canManageContacts: row.can_manage_contacts,
-    // Not enforced anywhere yet — no caregiver-management endpoints exist for
-    // it to gate. Left on the row rather than dropped from the response,
-    // since the column itself is intentionally still in play (see
-    // BUILD_LOG.md); a client can display it, nothing reads it back.
+    // Enforced by caregiver module routes via hasManageCaregiversPermission —
+    // a family member must have this true on their active link to book
+    // or manage caregivers on the elderly person's behalf.
     canManageCaregivers: row.can_manage_caregivers,
     canAcknowledgeAlerts: row.can_acknowledge_alerts,
     status: row.status,

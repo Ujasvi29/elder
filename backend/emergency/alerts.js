@@ -412,3 +412,110 @@ export async function listFamilyAlertHistory(familyUserId, { limit }) {
     )
   );
 }
+
+/**
+ * Platform-wide alert listing for the admin dashboard.
+ * Queries cross-user with optional status, type, severity filtering and pagination.
+ */
+export async function listAllAlerts({ status, type, severity, page = 1, limit = 25 } = {}) {
+  const conditions = [];
+  const params = [];
+
+  if (status) {
+    params.push(status);
+    conditions.push(`a.status = $${params.length}`);
+  }
+
+  if (type) {
+    params.push(type);
+    conditions.push(`a.alert_type = $${params.length}`);
+  }
+
+  if (severity) {
+    params.push(severity);
+    conditions.push(`a.severity = $${params.length}`);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const parsedPage = Math.max(1, parseInt(page, 10) || 1);
+  const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 25));
+  const offset = (parsedPage - 1) * parsedLimit;
+
+  const countSql = `SELECT COUNT(*) AS total FROM alerts a ${whereClause}`;
+  const { rows: countRows } = await query(countSql, params);
+  const total = parseInt(countRows[0]?.total || 0, 10);
+
+  params.push(parsedLimit);
+  const limitParam = params.length;
+  params.push(offset);
+  const offsetParam = params.length;
+
+  const dataSql = `
+    SELECT a.*,
+           u.full_name AS user_full_name,
+           u.phone AS user_phone,
+           u.role AS user_role,
+           ack.full_name AS acknowledged_by_name,
+           res.full_name AS resolved_by_name
+      FROM alerts a
+      JOIN users u ON u.id = a.user_id
+      LEFT JOIN users ack ON ack.id = a.acknowledged_by
+      LEFT JOIN users res ON res.id = a.resolved_by
+    ${whereClause}
+    ORDER BY a.triggered_at DESC
+    LIMIT $${limitParam} OFFSET $${offsetParam}
+  `;
+
+  const { rows } = await query(dataSql, params);
+
+  return {
+    total,
+    page: parsedPage,
+    limit: parsedLimit,
+    alerts: rows.map((row) => ({
+      ...toPublicAlert(row),
+      user: {
+        id: row.user_id,
+        fullName: row.user_full_name,
+        phone: row.user_phone,
+        role: row.user_role,
+      },
+      acknowledgedByName: row.acknowledged_by_name,
+      resolvedByName: row.resolved_by_name,
+    })),
+  };
+}
+
+/**
+ * Single alert detail for the admin view with full user info and acknowledger/resolver.
+ */
+export async function findAlertForAdmin(alertId) {
+  const { rows } = await query(
+    `SELECT a.*,
+            u.full_name AS user_full_name,
+            u.phone AS user_phone,
+            u.role AS user_role,
+            ack.full_name AS acknowledged_by_name,
+            res.full_name AS resolved_by_name
+       FROM alerts a
+       JOIN users u ON u.id = a.user_id
+       LEFT JOIN users ack ON ack.id = a.acknowledged_by
+       LEFT JOIN users res ON res.id = a.resolved_by
+      WHERE a.id = $1`,
+    [alertId]
+  );
+  if (!rows[0]) return null;
+  const row = rows[0];
+  return {
+    ...toPublicAlert(row),
+    user: {
+      id: row.user_id,
+      fullName: row.user_full_name,
+      phone: row.user_phone,
+      role: row.user_role,
+    },
+    acknowledgedByName: row.acknowledged_by_name,
+    resolvedByName: row.resolved_by_name,
+  };
+}
+

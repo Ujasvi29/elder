@@ -41,11 +41,17 @@ import {
   findFamilyLink,
   listActiveFamilyAlerts,
   listFamilyAlertHistory,
+  listAllAlerts,
+  findAlertForAdmin,
 } from './alerts.js';
+import { validateAlertListQuery, validateUuid } from '../admin/services/validate.js';
 import { createLocation, toPublicLocation, findLatestLocation, listLocationsSince } from './locations.js';
-import { registerDeviceToken } from './deviceTokens.js';
+import { registerDeviceToken, deactivateDeviceTokenForUser } from './deviceTokens.js';
 import { advanceFanout } from './notifications/fanout.js';
 import { broadcastToFamily } from './notifications/broadcast.js';
+import { createFeedItem } from '../notifications/feedWriter.js';
+import { NOTIFICATION_EVENTS } from '../notifications/constants.js';
+import { listLinksForElderly } from '../family/links.js';
 import { ambulanceRouter } from './ambulance/routes.js';
 import { disasterRouter } from './disaster/routes.js';
 import {
@@ -76,6 +82,7 @@ import {
   validateAttachLocationBody,
   validateCreateLocationBody,
   validateRegisterDeviceTokenBody,
+  validateDeactivateDeviceTokenBody,
   validateCreateContactBody,
   validateContactsListQuery,
   validateUpdateContactBody,
@@ -162,6 +169,33 @@ emergencyRouter.post('/alerts', requireAuth, async (req, res) => {
     console.error(`Family broadcast failed for alert ${alert.id}:`, err)
   );
 
+  listLinksForElderly(req.user.id, 'active')
+    .then((links) => {
+      const familyUserIds = links.map((l) => l.family_user_id);
+      if (familyUserIds.length > 0) {
+        createFeedItem({
+          recipientUserIds: familyUserIds,
+          eventType: NOTIFICATION_EVENTS.ALERT_FIRED,
+          eventId: alert.id,
+          title: 'SOS Alert Triggered',
+          body: `Emergency SOS alert raised by ${req.user.full_name || 'Elderly user'}`,
+          data: { screen: 'AlertDetails', params: { id: alert.id } },
+          sendPush: false,
+        });
+      }
+    })
+    .catch((err) => console.error('Feed error SOS alert family:', err));
+
+  createFeedItem({
+    recipientUserIds: [req.user.id],
+    eventType: NOTIFICATION_EVENTS.ALERT_FIRED,
+    eventId: alert.id,
+    title: 'SOS Alert Activated',
+    body: 'Your emergency SOS alert was activated and family contacts have been notified.',
+    data: { screen: 'AlertDetails', params: { id: alert.id } },
+    sendPush: false,
+  });
+
   res.status(201).json({ status: 'ok', alert: toPublicAlert(alert) });
 });
 
@@ -192,6 +226,33 @@ const handleFallAlert = async (req, res) => {
     console.error(`Initial fanout failed for fall alert ${alert.id}:`, err)
   );
 
+  listLinksForElderly(req.user.id, 'active')
+    .then((links) => {
+      const familyUserIds = links.map((l) => l.family_user_id);
+      if (familyUserIds.length > 0) {
+        createFeedItem({
+          recipientUserIds: familyUserIds,
+          eventType: NOTIFICATION_EVENTS.ALERT_FIRED,
+          eventId: alert.id,
+          title: 'Fall Detected',
+          body: `Fall alert detected for ${req.user.full_name || 'Elderly user'}`,
+          data: { screen: 'AlertDetails', params: { id: alert.id } },
+          sendPush: false,
+        });
+      }
+    })
+    .catch((err) => console.error('Feed error fall alert family:', err));
+
+  createFeedItem({
+    recipientUserIds: [req.user.id],
+    eventType: NOTIFICATION_EVENTS.ALERT_FIRED,
+    eventId: alert.id,
+    title: 'Fall Alert Recorded',
+    body: 'Fall alert was logged and emergency contacts notified.',
+    data: { screen: 'AlertDetails', params: { id: alert.id } },
+    sendPush: false,
+  });
+
   res.status(201).json({ status: 'ok', alert: toPublicAlert(alert) });
 };
 
@@ -208,6 +269,40 @@ emergencyRouter.get('/alerts', requireAuth, async (req, res) => {
 
   res.json({ status: 'ok', count: alerts.length, alerts: alerts.map(toPublicAlert) });
 });
+
+// ---------------------------------------------------------------------------
+// GET /emergency/admin/alerts — platform-wide alert overview
+// ---------------------------------------------------------------------------
+
+emergencyRouter.get('/admin/alerts', requireAuth, requireRole('admin'), async (req, res) => {
+  const filters = validateAlertListQuery(req.query);
+  const result = await listAllAlerts(filters);
+
+  res.json({
+    status: 'ok',
+    total: result.total,
+    page: result.page,
+    limit: result.limit,
+    count: result.alerts.length,
+    alerts: result.alerts,
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /emergency/admin/alerts/:id — single alert detail
+// ---------------------------------------------------------------------------
+
+emergencyRouter.get('/admin/alerts/:id', requireAuth, requireRole('admin'), async (req, res) => {
+  validateUuid(req.params.id, 'alertId');
+  const alert = await findAlertForAdmin(req.params.id);
+
+  if (!alert) {
+    throw notFound('alert_not_found', 'No alert with that id.');
+  }
+
+  res.json({ status: 'ok', alert });
+});
+
 
 // ---------------------------------------------------------------------------
 // POST /emergency/alerts/:id/cancel — owner only
@@ -231,6 +326,23 @@ emergencyRouter.post('/alerts/:id/cancel', requireAuth, async (req, res) => {
   if (!updated) {
     throw conflict('alert_not_active', 'This alert is no longer active.');
   }
+
+  listLinksForElderly(alert.user_id, 'active')
+    .then((links) => {
+      const familyUserIds = links.map((l) => l.family_user_id).filter((uId) => uId !== req.user.id);
+      if (familyUserIds.length > 0) {
+        createFeedItem({
+          recipientUserIds: familyUserIds,
+          eventType: NOTIFICATION_EVENTS.ALERT_CANCELLED,
+          eventId: alert.id,
+          title: 'Alert Cancelled',
+          body: `Emergency alert was cancelled by ${req.user.full_name || 'user'}`,
+          data: { screen: 'AlertDetails', params: { id: alert.id } },
+          sendPush: true,
+        });
+      }
+    })
+    .catch((err) => console.error('Feed error cancel alert:', err));
 
   res.json({ status: 'ok', alert: toPublicAlert(updated) });
 });
@@ -262,6 +374,24 @@ emergencyRouter.post('/alerts/:id/resolve', requireAuth, async (req, res) => {
   if (!updated) {
     throw conflict('alert_not_active', 'This alert is no longer active.');
   }
+
+  listLinksForElderly(alert.user_id, 'active')
+    .then((links) => {
+      const allStakeholders = [alert.user_id, ...links.map((l) => l.family_user_id)];
+      const recipients = allStakeholders.filter((uId) => uId !== req.user.id);
+      if (recipients.length > 0) {
+        createFeedItem({
+          recipientUserIds: recipients,
+          eventType: NOTIFICATION_EVENTS.ALERT_RESOLVED,
+          eventId: alert.id,
+          title: 'Alert Resolved',
+          body: `Emergency alert was resolved by ${req.user.full_name || 'user'}`,
+          data: { screen: 'AlertDetails', params: { id: alert.id } },
+          sendPush: true,
+        });
+      }
+    })
+    .catch((err) => console.error('Feed error resolve alert:', err));
 
   res.json({ status: 'ok', alert: toPublicAlert(updated) });
 });
@@ -299,6 +429,24 @@ emergencyRouter.post('/alerts/:id/acknowledge', requireAuth, async (req, res) =>
       alert: toPublicAlert(current),
     });
   }
+
+  listLinksForElderly(alert.user_id, 'active')
+    .then((links) => {
+      const allStakeholders = [alert.user_id, ...links.map((l) => l.family_user_id)];
+      const recipients = allStakeholders.filter((uId) => uId !== req.user.id);
+      if (recipients.length > 0) {
+        createFeedItem({
+          recipientUserIds: recipients,
+          eventType: NOTIFICATION_EVENTS.ALERT_ACKNOWLEDGED,
+          eventId: alert.id,
+          title: 'Alert Acknowledged',
+          body: `Emergency alert acknowledged by ${req.user.full_name || 'family member'}`,
+          data: { screen: 'AlertDetails', params: { id: alert.id } },
+          sendPush: true,
+        });
+      }
+    })
+    .catch((err) => console.error('Feed error acknowledge alert:', err));
 
   res.json({ status: 'ok', alert: toPublicAlert(updated) });
 });
@@ -411,6 +559,18 @@ emergencyRouter.post('/device-tokens', requireAuth, async (req, res) => {
   const deviceToken = validateRegisterDeviceTokenBody(req.body);
   const row = await registerDeviceToken(req.user.id, deviceToken);
   res.status(201).json({ status: 'ok', deviceToken: row });
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /emergency/device-tokens — deactivate this device's push token on logout.
+// Scoped strictly to (expoPushToken, req.user.id) so a caller cannot deactivate
+// tokens belonging to other users or other devices.
+// ---------------------------------------------------------------------------
+
+emergencyRouter.delete('/device-tokens', requireAuth, async (req, res) => {
+  const { expoPushToken } = validateDeactivateDeviceTokenBody(req.body);
+  const deactivated = await deactivateDeviceTokenForUser(req.user.id, expoPushToken);
+  res.json({ status: 'ok', deactivated });
 });
 
 // ---------------------------------------------------------------------------

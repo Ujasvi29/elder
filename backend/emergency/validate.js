@@ -196,7 +196,7 @@ const DEVICE_PLATFORMS = ['ios', 'android', 'web'];
 
 /** POST /emergency/device-tokens */
 export function validateRegisterDeviceTokenBody(body = {}) {
-  const { expoPushToken, platform, deviceName, deviceModel, appVersion, osVersion } = body;
+  const { expoPushToken, previousExpoPushToken, platform, deviceName, deviceModel, appVersion, osVersion } = body;
 
   const shortString = (value, max) => typeof value === 'string' && value.length <= max;
 
@@ -205,6 +205,8 @@ export function validateRegisterDeviceTokenBody(body = {}) {
       field: 'expoPushToken', message: 'expoPushToken is required.' },
     { when: typeof expoPushToken === 'string' && expoPushToken.length > 255,
       field: 'expoPushToken', message: 'expoPushToken must be 255 characters or fewer.' },
+    { when: previousExpoPushToken !== undefined && (typeof previousExpoPushToken !== 'string' || previousExpoPushToken.length > 255),
+      field: 'previousExpoPushToken', message: 'previousExpoPushToken must be a string of 255 characters or fewer.' },
     { when: !DEVICE_PLATFORMS.includes(platform),
       field: 'platform', message: `platform must be one of: ${DEVICE_PLATFORMS.join(', ')}.` },
     { when: deviceName !== undefined && !shortString(deviceName, 120),
@@ -223,11 +225,32 @@ export function validateRegisterDeviceTokenBody(body = {}) {
 
   return {
     expoPushToken: expoPushToken.trim(),
+    previousExpoPushToken: previousExpoPushToken ? previousExpoPushToken.trim() : null,
     platform,
     deviceName: deviceName ?? null,
     deviceModel: deviceModel ?? null,
     appVersion: appVersion ?? null,
     osVersion: osVersion ?? null,
+  };
+}
+
+/** DELETE /emergency/device-tokens */
+export function validateDeactivateDeviceTokenBody(body = {}) {
+  const { expoPushToken } = body;
+
+  const errors = fieldErrors([
+    { when: typeof expoPushToken !== 'string' || expoPushToken.trim() === '',
+      field: 'expoPushToken', message: 'expoPushToken is required.' },
+    { when: typeof expoPushToken === 'string' && expoPushToken.length > 255,
+      field: 'expoPushToken', message: 'expoPushToken must be 255 characters or fewer.' },
+  ]);
+
+  if (errors.length > 0) {
+    throw badRequest('validation_failed', 'One or more fields are invalid.', { details: errors });
+  }
+
+  return {
+    expoPushToken: expoPushToken.trim(),
   };
 }
 

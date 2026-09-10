@@ -40,8 +40,11 @@ import { ReportFormScreen } from '../../caregiver/screens/ReportFormScreen';
 import { ReviewFormScreen } from '../../caregiver/screens/ReviewFormScreen';
 import { ManageFamilyScreen } from '../../family/screens/ManageFamilyScreen';
 import { FamilyLinksScreen } from '../../family/screens/FamilyLinksScreen';
+import { NotificationFeedScreen } from '../notifications/screens/NotificationFeedScreen';
 import { useAuth } from '../auth/AuthContext';
 import { AdminHomeScreen } from '../screens/AdminHomeScreen';
+import { UserManagementScreen } from '../../admin/screens/UserManagementScreen';
+import { AlertOverviewScreen } from '../../admin/screens/AlertOverviewScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -73,6 +76,7 @@ function ElderlyNavigator() {
       <Stack.Screen name="TaskForm" component={TaskFormScreen} />
       <Stack.Screen name="Report" component={ReportScreen} />
       <Stack.Screen name="ReviewForm" component={ReviewFormScreen} />
+      <Stack.Screen name="NotificationFeed" component={NotificationFeedScreen} />
     </Stack.Navigator>
   );
 }
@@ -108,6 +112,7 @@ function FamilyNavigator() {
       <Stack.Screen name="TaskForm" component={TaskFormScreen} />
       <Stack.Screen name="Report" component={ReportScreen} />
       <Stack.Screen name="ReviewForm" component={ReviewFormScreen} />
+      <Stack.Screen name="NotificationFeed" component={NotificationFeedScreen} />
     </Stack.Navigator>
   );
 }
@@ -124,6 +129,7 @@ function CaregiverNavigator() {
       <Stack.Screen name="ScheduleTasks" component={ScheduleTasksScreen} />
       <Stack.Screen name="Report" component={ReportScreen} />
       <Stack.Screen name="ReportForm" component={ReportFormScreen} />
+      <Stack.Screen name="NotificationFeed" component={NotificationFeedScreen} />
     </Stack.Navigator>
   );
 }
@@ -133,6 +139,8 @@ function AdminNavigator() {
     <Stack.Navigator screenOptions={screenOptions}>
       <Stack.Screen name="AdminHome" component={AdminHomeScreen} />
       <Stack.Screen name="CaregiverVerification" component={CaregiverVerificationScreen} />
+      <Stack.Screen name="UserManagement" component={UserManagementScreen} />
+      <Stack.Screen name="AlertOverview" component={AlertOverviewScreen} />
     </Stack.Navigator>
   );
 }
