@@ -3,9 +3,15 @@
 //
 // Four roles, four different home screens. The role comes from the server on
 // the user record, never from anything the app decides for itself.
+//
+// A fifth branch exists for the case where that role is missing or unknown —
+// see UnknownRoleNavigator at the bottom. It is not a role, it is the refusal
+// to guess one.
 // ============================================================================
 
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { CaregiverHomeScreen } from '../../caregiver/screens/CaregiverHomeScreen';
 import { ElderlyHomeScreen } from '../../emergency/screens/ElderlyHomeScreen';
@@ -45,6 +51,7 @@ import { useAuth } from '../auth/AuthContext';
 import { AdminHomeScreen } from '../screens/AdminHomeScreen';
 import { UserManagementScreen } from '../../admin/screens/UserManagementScreen';
 import { AlertOverviewScreen } from '../../admin/screens/AlertOverviewScreen';
+import { colors, spacing, type } from '../ui/theme';
 
 const Stack = createNativeStackNavigator();
 
@@ -145,6 +152,67 @@ function AdminNavigator() {
   );
 }
 
+// Shown when the signed-in user's role is missing or is a value this build
+// does not know. Previously this case fell through to ElderlyNavigator, which
+// meant an unrecognised role was handed the elderly app — including its SOS
+// button — while the person's actual permissions were something else entirely.
+// Failing visibly is the safer default: a screen that says what went wrong and
+// offers the one action that always works beats silently impersonating a role.
+function UnknownRoleScreen() {
+  const { user, signOut } = useAuth();
+
+  return (
+    <SafeAreaView style={unknownRoleStyles.safe} edges={['top', 'bottom']}>
+      <View style={unknownRoleStyles.content}>
+        <Text style={unknownRoleStyles.title}>Something's wrong with this account</Text>
+        <Text style={unknownRoleStyles.body}>
+          We couldn't tell whether this account belongs to an elderly person, a family member, a
+          caregiver or an administrator, so we haven't opened any of those screens.
+        </Text>
+        <Text style={unknownRoleStyles.body}>
+          Please sign out and sign in again. If it keeps happening, contact support — nothing is
+          wrong with your data.
+        </Text>
+        {user?.role ? (
+          <Text style={unknownRoleStyles.detail}>Reported account type: {String(user.role)}</Text>
+        ) : (
+          <Text style={unknownRoleStyles.detail}>No account type was returned for this account.</Text>
+        )}
+
+        <Pressable style={unknownRoleStyles.signOutButton} onPress={signOut} accessibilityRole="button">
+          <Text style={unknownRoleStyles.signOutText}>Sign out</Text>
+        </Pressable>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+const unknownRoleStyles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: colors.background },
+  content: { flex: 1, padding: spacing.lg, gap: spacing.md, justifyContent: 'center' },
+  title: { fontSize: type.title, fontWeight: '900', color: colors.text },
+  body: { fontSize: type.body, color: colors.text, lineHeight: 22 },
+  detail: { fontSize: type.small, color: colors.textMuted },
+  signOutButton: {
+    marginTop: spacing.md,
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  signOutText: { fontSize: type.body, color: colors.danger, fontWeight: '700' },
+});
+
+function UnknownRoleNavigator() {
+  return (
+    <Stack.Navigator screenOptions={screenOptions}>
+      <Stack.Screen name="UnknownRole" component={UnknownRoleScreen} />
+    </Stack.Navigator>
+  );
+}
+
 export function AppNavigator() {
   const { user } = useAuth();
 
@@ -158,6 +226,6 @@ export function AppNavigator() {
     case 'admin':
       return <AdminNavigator />;
     default:
-      return <ElderlyNavigator />;
+      return <UnknownRoleNavigator />;
   }
 }

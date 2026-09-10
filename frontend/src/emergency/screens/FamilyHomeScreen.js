@@ -41,6 +41,21 @@
 // async-attached fresh fix that clears the flag, AlertCard shows a brief
 // "Confirmed location" transition rather than swapping the badge silently —
 // see the wasApproximateRef/justConfirmed state below.
+//
+// "The people you look after" sits above the alerts, and exists because of a
+// device finding: Safety Status, Live Map and Find a Caregiver were only ever
+// reachable from FamilyLinksScreen's per-elder cards, so the three headline
+// family features were invisible from the family home screen. A tester read
+// this screen as a dead end for exactly that reason. The cards here are the
+// same five actions, with the same permission gates and the same navigate
+// targets FamilyLinksScreen uses — deliberately duplicated rather than
+// extracted, because that screen also does invites, leaving and permission
+// display, and lifting one section out of it would mean rewriting a working
+// screen to fix a discoverability bug on a different one. If a third caller
+// ever needs these cards, that is the moment to extract a component.
+//
+// The links themselves ride the existing alert poll (GET /family/links), so
+// this adds no new endpoint and no second interval.
 // ============================================================================
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -48,6 +63,7 @@ import { ActivityIndicator, Linking, Pressable, RefreshControl, ScrollView, Styl
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { listFamilyAlerts, listFamilyAlertHistory, resolveAlert, acknowledgeAlert } from '../api/alerts';
+import { listLinks } from '../../family/api/links';
 import { ApiError, NetworkError } from '../../shared/api/client';
 import { useAuth } from '../../shared/auth/AuthContext';
 import { colors, spacing, type } from '../../shared/ui/theme';
@@ -60,6 +76,7 @@ export function FamilyHomeScreen({ navigation }) {
 
   const [alerts, setAlerts] = useState([]);
   const [history, setHistory] = useState([]);
+  const [links, setLinks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [banner, setBanner] = useState(null);
@@ -70,12 +87,19 @@ export function FamilyHomeScreen({ navigation }) {
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
     try {
-      const [{ alerts: active }, { alerts: recent }] = await Promise.all([
+      // Links ride the same poll as the alerts, but its own failure is
+      // swallowed rather than allowed to reject the Promise.all: a family
+      // member whose links call fails still needs to see an active SOS, and
+      // the previously loaded cards are better than none. Same reasoning as
+      // the silent-poll catch below, one level down.
+      const [{ alerts: active }, { alerts: recent }, linkResult] = await Promise.all([
         listFamilyAlerts(),
         listFamilyAlertHistory(),
+        listLinks({ status: 'active' }).catch(() => null),
       ]);
       setAlerts(active);
       setHistory(recent);
+      if (linkResult) setLinks(linkResult.links ?? []);
       setBanner(null);
     } catch (err) {
       // A background poll failing should not overwrite a list that is still
@@ -103,6 +127,12 @@ export function FamilyHomeScreen({ navigation }) {
     const id = setInterval(() => load({ silent: true }), intervalMs);
     return () => clearInterval(id);
   }, [alerts.length, load]);
+
+  // Same filter FamilyLinksScreen applies. The request already asks for
+  // status='active', so this is belt-and-braces rather than the only guard —
+  // but the two screens showing the same cards must agree on what "linked"
+  // means, and the cheapest way to guarantee that is to apply the same test.
+  const activeLinks = links.filter((l) => l.status === 'active');
 
   async function onRefresh() {
     setRefreshing(true);
@@ -207,6 +237,109 @@ export function FamilyHomeScreen({ navigation }) {
             <Text style={styles.bannerText}>{banner}</Text>
           </Pressable>
         )}
+
+        <Text style={styles.sectionHeading}>The people you look after</Text>
+
+        {!loading && activeLinks.length === 0 && (
+          <Pressable
+            style={styles.emptyCard}
+            onPress={() => navigation.navigate('FamilyLinks')}
+            accessibilityRole="button"
+            accessibilityLabel="You aren't linked to anyone yet. Open Family Links."
+          >
+            <Text style={styles.emptyText}>
+              You aren't linked to anyone yet. Open Family Links to accept an invite — safety status,
+              live map and caregiver tools appear here once you're linked.
+            </Text>
+          </Pressable>
+        )}
+
+        {!loading &&
+          activeLinks.map((link) => (
+            <View key={link.id} style={styles.linkCard}>
+              <Text style={styles.linkCardTitle}>{link.elderlyUser?.fullName || 'Linked account'}</Text>
+              {link.relationship ? <Text style={styles.linkCardRelationship}>Their {link.relationship}</Text> : null}
+              <Text style={styles.linkCardMeta}>
+                {link.canViewLocation ? 'You can see their location.' : "You don't have access to their location."}
+              </Text>
+
+              {link.canViewLocation && (
+                <Pressable
+                  onPress={() =>
+                    navigation.navigate('SafetyStatus', {
+                      elderlyUserId: link.elderlyUserId,
+                      elderlyName: link.elderlyUser?.fullName || null,
+                    })
+                  }
+                  accessibilityRole="button"
+                  style={styles.linkActionButton}
+                >
+                  <Text style={styles.linkActionButtonText}>Safety Status</Text>
+                </Pressable>
+              )}
+
+              {link.canViewLocation && (
+                <Pressable
+                  onPress={() =>
+                    navigation.navigate('LiveMap', {
+                      elderlyUserId: link.elderlyUserId,
+                      elderlyName: link.elderlyUser?.fullName || null,
+                    })
+                  }
+                  accessibilityRole="button"
+                  style={styles.linkActionButton}
+                >
+                  <Text style={styles.linkActionButtonText}>Live Map</Text>
+                </Pressable>
+              )}
+
+              {link.canViewLocation && (
+                <Pressable
+                  onPress={() =>
+                    navigation.navigate('Geofences', {
+                      elderlyUserId: link.elderlyUserId,
+                      elderlyName: link.elderlyUser?.fullName || null,
+                      canManage: link.permissionLevel === 'manage' || link.permissionLevel === 'owner',
+                    })
+                  }
+                  accessibilityRole="button"
+                  style={styles.linkActionButton}
+                >
+                  <Text style={styles.linkActionButtonText}>Safe Zones</Text>
+                </Pressable>
+              )}
+
+              {link.canManageCaregivers && (
+                <Pressable
+                  onPress={() =>
+                    navigation.navigate('CaregiverSearch', {
+                      elderlyUserId: link.elderlyUserId,
+                      elderlyName: link.elderlyUser?.fullName || null,
+                    })
+                  }
+                  accessibilityRole="button"
+                  style={styles.linkActionButton}
+                >
+                  <Text style={styles.linkActionButtonText}>Find a Caregiver</Text>
+                </Pressable>
+              )}
+
+              {link.canManageCaregivers && (
+                <Pressable
+                  onPress={() =>
+                    navigation.navigate('CarePlan', {
+                      elderlyUserId: link.elderlyUserId,
+                      elderlyName: link.elderlyUser?.fullName || null,
+                    })
+                  }
+                  accessibilityRole="button"
+                  style={styles.linkActionButton}
+                >
+                  <Text style={styles.linkActionButtonText}>Care Plan</Text>
+                </Pressable>
+              )}
+            </View>
+          ))}
 
         <Text style={styles.sectionHeading}>Active alerts</Text>
 
@@ -463,6 +596,29 @@ const styles = StyleSheet.create({
   },
   familyLinksButtonText: { fontSize: type.body, fontWeight: '800', color: colors.primary },
   familyLinksButtonSubtext: { fontSize: type.small, color: colors.textMuted },
+  // Matches FamilyLinksScreen's `card` / `zonesButton` so the same actions
+  // look the same on both screens. Named separately because `card` on this
+  // screen is already taken by the red active-alert card.
+  linkCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  linkCardTitle: { fontSize: type.heading, fontWeight: '800', color: colors.text },
+  linkCardRelationship: { fontSize: type.small + 1, color: colors.textMuted, marginTop: -4 },
+  linkCardMeta: { fontSize: type.body - 1, color: colors.textMuted },
+  linkActionButton: {
+    alignSelf: 'flex-start',
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md,
+  },
+  linkActionButtonText: { fontSize: type.body - 1, fontWeight: '800', color: colors.primary },
   banner: { backgroundColor: '#FEF3C7', borderRadius: 12, padding: spacing.md },
   bannerText: { fontSize: type.body, color: colors.text, fontWeight: '600' },
   sectionHeading: { fontSize: type.heading, fontWeight: '700', color: colors.text },
