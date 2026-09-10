@@ -184,11 +184,13 @@ export function NotificationFeedScreen({ navigation }) {
           try { navigation.navigate('LiveMap'); } catch {}
           break;
         case 'booking_created':
-        case 'booking_status_changed':
-          try { navigation.navigate('Bookings'); } catch {
-            try { navigation.navigate('CaregiverBookings'); } catch {}
-          }
+        case 'booking_status_changed': {
+          // 'Bookings' on the elderly/family stacks, 'CaregiverBookings' on
+          // the caregiver's — navigate() won't throw for the missing one.
+          const target = firstRegisteredRoute(navigation, ['Bookings', 'CaregiverBookings']);
+          if (target) navigation.navigate(target);
           break;
+        }
         case 'task_assigned':
         case 'task_status_changed':
           try { navigation.navigate('ScheduleTasks'); } catch {}

@@ -6,16 +6,66 @@
 // caregiver needs (check-in/out, tasks, care plans, activity reports) is
 // reached per-visit from My Schedule (CaregiverScheduleScreen), not
 // duplicated here.
+//
+// The My Bookings card counts the requests waiting on this caregiver — the
+// same fix FamilyHome's summary cards got. A device test read "the booking
+// request never arrived" off this screen because it was three static links
+// that fetched nothing: the request was in GET /caregiver/bookings the whole
+// time, visible only after tapping into My Bookings. Refetched on focus, when
+// the app comes back to the foreground (arriving from the booking push), and
+// on the same idle cadence FamilyHome polls at.
 // ============================================================================
 
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import { AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { listBookings } from '../api/bookings';
 import { useAuth } from '../../shared/auth/AuthContext';
 import { colors, spacing, type } from '../../shared/ui/theme';
 
+const POLL_MS = 20_000;
+
+/** null = not loaded yet (or never loaded) — keep the plain caption rather than claim zero. */
+function requestsSummary(count) {
+  if (count === null) return 'Requests waiting on you, confirmed and past bookings';
+  if (count === 0) return 'No requests waiting on you';
+  return `${count} request${count === 1 ? '' : 's'} waiting on you — tap to confirm or decline`;
+}
+
 export function CaregiverHomeScreen({ navigation }) {
   const { user, signOut } = useAuth();
+  const [requestCount, setRequestCount] = useState(null);
+
+  const load = useCallback(async () => {
+    try {
+      const { bookings } = await listBookings({ status: 'requested' });
+      setRequestCount(bookings.length);
+    } catch {
+      // A failed refresh keeps the last count on screen; My Bookings itself
+      // surfaces load errors when opened.
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
+
+  useEffect(() => {
+    const id = setInterval(load, POLL_MS);
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (next === 'active') load();
+    });
+    return () => {
+      clearInterval(id);
+      subscription.remove();
+    };
+  }, [load]);
+
+  const hasRequests = requestCount > 0;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -39,13 +89,19 @@ export function CaregiverHomeScreen({ navigation }) {
           </Pressable>
 
           <Pressable
-            style={({ pressed }) => [styles.actionCard, pressed && styles.actionCardPressed]}
+            style={({ pressed }) => [
+              styles.actionCard,
+              hasRequests && styles.actionCardAttention,
+              pressed && styles.actionCardPressed,
+            ]}
             onPress={() => navigation.navigate('CaregiverBookings')}
             accessibilityRole="button"
-            accessibilityLabel="My Bookings"
+            accessibilityLabel={`My Bookings. ${requestsSummary(requestCount)}`}
           >
             <Text style={styles.cardTitle}>My Bookings</Text>
-            <Text style={styles.cardSubtitle}>Requests waiting on you, confirmed and past bookings</Text>
+            <Text style={[styles.cardSubtitle, hasRequests && styles.cardSubtitleAttention]}>
+              {requestsSummary(requestCount)}
+            </Text>
           </Pressable>
 
           <Pressable
@@ -82,9 +138,11 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: 4,
   },
+  actionCardAttention: { borderColor: colors.primary, backgroundColor: '#EFF6FF' },
   actionCardPressed: { transform: [{ scale: 0.98 }], opacity: 0.9 },
   cardTitle: { fontSize: type.heading - 2, fontWeight: '800', color: colors.primary },
   cardSubtitle: { fontSize: type.small + 1, color: colors.textMuted, lineHeight: 19 },
+  cardSubtitleAttention: { color: colors.primary, fontWeight: '700' },
   signOutButton: {
     alignItems: 'center',
     paddingVertical: spacing.md,
