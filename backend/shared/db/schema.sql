@@ -2,7 +2,7 @@
 -- ElderCare - Database Schema
 -- PostgreSQL 14+   (no PostGIS)
 --
--- Revision 2. 19 tables: 4 shared, 7 emergency, 8 caregiver.
+-- Revision 2. 21 tables: 6 shared, 7 emergency, 8 caregiver.
 --
 -- Run once against an empty database:
 --   psql -U postgres -d eldercare -f backend/shared/db/schema.sql
@@ -172,6 +172,35 @@ CREATE TABLE push_receipt_tickets (
 );
 
 CREATE INDEX idx_push_receipt_tickets_created_at ON push_receipt_tickets (created_at);
+
+
+-- The in-app notification feed. Cross-cutting rather than owned by one
+-- module: emergency, family and caregiver routes all write here through
+-- notifications/feedWriter.js, and every role reads its own rows back from
+-- GET /notifications.
+--
+-- Push delivery and this table are deliberately separate. A push is a
+-- best-effort interruption that may never arrive; a feed row is the durable
+-- record the person can come back to. `data` carries the deep link the feed
+-- screen navigates with: { screen, params }.
+--
+-- Also shipped as migrations/001_notification_feed.sql for databases created
+-- before this table existed. That file and this block must stay identical.
+CREATE TABLE notification_feed (
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    recipient_user_id UUID            NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    event_type        VARCHAR(50)     NOT NULL,
+    event_id          UUID,                       -- nullable: references source row (alert, booking, link, task)
+    title             VARCHAR(200)    NOT NULL,
+    body              TEXT,
+    data              JSONB,                      -- deep-link metadata: { screen, params }
+    is_read           BOOLEAN         NOT NULL DEFAULT FALSE,
+    created_at        TIMESTAMPTZ     NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_feed_recipient ON notification_feed (recipient_user_id, created_at DESC);
+CREATE INDEX idx_feed_unread    ON notification_feed (recipient_user_id, created_at DESC)
+    WHERE is_read = FALSE;
 
 -- ============================================================================
 -- EMERGENCY MODULE
@@ -643,5 +672,5 @@ CREATE TRIGGER trg_reviews_recalc_caregiver_rating
     FOR EACH ROW EXECUTE FUNCTION recalc_caregiver_rating();
 
 -- ============================================================================
--- End of schema. 19 tables, 17 enum types.
+-- End of schema. 21 tables, 17 enum types.
 -- ============================================================================
