@@ -1249,6 +1249,8 @@ Permitted: the elderly user, or a family member with `can_manage_contacts = true
 
 **Response `201`** — the new contact, same shape as `POST /emergency/contacts` below.
 
+**Response `200`** — when a row with this family member's phone already exists for the elderly user and is either hand-entered (`contactUserId` null, active or not) or this same family member's row soft-deleted by an earlier `DELETE /emergency/contacts/:id`. That row is reused instead of inserting a second one (`uq_contact_per_user` forbids it): `contactUserId` is set, `isActive` goes back to `true`, and its name, priority and notify flags are kept. This is what lets ManageFamilyScreen's "Also call them in an emergency" toggle turn back on after being turned off.
+
 **Errors**
 
 | Status | Code | When |
@@ -1256,7 +1258,7 @@ Permitted: the elderly user, or a family member with `can_manage_contacts = true
 | `403` | `not_permitted` | Caller lacks `can_manage_contacts` on an active link to this elderly user |
 | `404` | `link_not_found` | No link with that id |
 | `409` | `link_not_active` | Link is `pending` or `revoked` |
-| `409` | `contact_already_exists` | This family member's current phone number is already a contact for this elderly user |
+| `409` | `contact_already_exists` | This family member's phone is already an **active** contact linked to them, or a contact linked to a different account |
 
 ---
 
@@ -2251,7 +2253,7 @@ Submitting a review also recalculates `caregivers.average_rating`/`total_reviews
 
 **The emergency-contact copy goes stale silently.** `POST /family/links/:id/emergency-contact` copies `fullName`/`phone`/`email` once, at that moment, and never refreshes them. If that family member later changes their phone number, the elderly user's emergency contact list keeps calling the old one — and nobody finds out until an actual emergency exposes it. This is a safety failure mode, not untidy data. **Wherever a contacts list is displayed, it should surface that a `contactUserId`-linked row's details came from a linked account and may be out of date** — `contactUserId !== null` is the signal to key that off of. Keeping the copy fresh (a trigger on `users`, or resolving `contact_user_id` at read time instead of copying) is future work, not attempted here.
 
-**Deleted contacts cannot be undeleted through the API.** `DELETE /emergency/contacts/:id` is soft (`isActive: false`), but nothing PATCHes `isActive` back to `true` — re-adding the same phone number hits `uq_contact_per_user` and fails as `contact_already_exists`. Only direct database access can revive the original row today.
+**Deleted contacts cannot be undeleted through the API.** `DELETE /emergency/contacts/:id` is soft (`isActive: false`), but nothing PATCHes `isActive` back to `true` — re-adding the same phone number through `POST /emergency/contacts` hits `uq_contact_per_user` and fails as `contact_already_exists`. The one exception is `POST /family/links/:id/emergency-contact`, which reactivates the existing row for a linked family member's phone (see that endpoint). A hand-entered contact deleted by mistake can still only be revived with direct database access.
 
 ---
 

@@ -48,6 +48,7 @@ import {
   toPublicContact,
   findContactByPhone,
   createContact,
+  linkContactToUser,
   nextContactPriority,
 } from '../emergency/contacts.js';
 import { validateInviteBody, validateListLinksQuery, validateUpdateLinkPermissionsBody } from './validate.js';
@@ -333,8 +334,18 @@ familyRouter.post('/links/:id/emergency-contact', requireAuth, async (req, res) 
 
   const familyUser = toPublicUser(await findUserById(link.family_user_id));
 
+  // findContactByPhone sees soft-deleted rows too. A hand-entered row for
+  // this same phone (contact_user_id null), or this family member's own row
+  // soft-deleted by turning the toggle off, is reused rather than reported
+  // as a conflict — otherwise ManageFamilyScreen's toggle could never turn
+  // on for them. Only an already-active linked row, or one linked to a
+  // different account, is a real conflict.
   const existingContact = await findContactByPhone(link.elderly_user_id, familyUser.phone);
-  if (existingContact) {
+  const reusable =
+    !!existingContact &&
+    (existingContact.contact_user_id === null ||
+      (existingContact.contact_user_id === link.family_user_id && !existingContact.is_active));
+  if (existingContact && !reusable) {
     throw conflict(
       'contact_already_exists',
       'This person is already an emergency contact for this account.',
@@ -342,27 +353,30 @@ familyRouter.post('/links/:id/emergency-contact', requireAuth, async (req, res) 
     );
   }
 
-  const priority = await nextContactPriority(link.elderly_user_id);
-
   let contact;
-  try {
-    contact = await createContact({
-      userId: link.elderly_user_id,
-      contactUserId: link.family_user_id,
-      fullName: familyUser.fullName,
-      phone: familyUser.phone,
-      email: familyUser.email,
-      relationship: link.relationship,
-      priority,
-      notifyBySms: true,
-      notifyByCall: true,
-      notifyByPush: true,
-    });
-  } catch (err) {
-    if (err.code === PG_UNIQUE_VIOLATION) {
-      throw conflict('contact_already_exists', 'This person is already an emergency contact for this account.');
+  if (reusable) {
+    contact = await linkContactToUser(existingContact.id, link.family_user_id);
+  } else {
+    const priority = await nextContactPriority(link.elderly_user_id);
+    try {
+      contact = await createContact({
+        userId: link.elderly_user_id,
+        contactUserId: link.family_user_id,
+        fullName: familyUser.fullName,
+        phone: familyUser.phone,
+        email: familyUser.email,
+        relationship: link.relationship,
+        priority,
+        notifyBySms: true,
+        notifyByCall: true,
+        notifyByPush: true,
+      });
+    } catch (err) {
+      if (err.code === PG_UNIQUE_VIOLATION) {
+        throw conflict('contact_already_exists', 'This person is already an emergency contact for this account.');
+      }
+      throw err;
     }
-    throw err;
   }
 
   createFeedItem({
@@ -375,5 +389,5 @@ familyRouter.post('/links/:id/emergency-contact', requireAuth, async (req, res) 
     sendPush: true,
   });
 
-  res.status(201).json({ status: 'ok', contact: toPublicContact(contact) });
+  res.status(reusable ? 200 : 201).json({ status: 'ok', contact: toPublicContact(contact) });
 });
