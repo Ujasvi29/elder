@@ -79,6 +79,18 @@ function getEventBadgeInfo(eventType) {
   }
 }
 
+// React Navigation does not throw when asked to navigate to a route the
+// current navigator doesn't have — it logs a dev warning and does nothing.
+// So wrapping navigate() in try/catch never falls through to a fallback, and
+// a feed item naming a screen this role's stack doesn't register (the
+// backend sends 'AlertDetails' and 'BookingDetails', which no navigator
+// registers) was a tap that went nowhere. Check the stack's route names
+// first instead.
+function firstRegisteredRoute(navigation, names) {
+  const routeNames = navigation?.getState?.()?.routeNames ?? [];
+  return names.find((name) => routeNames.includes(name)) ?? null;
+}
+
 export function NotificationFeedScreen({ navigation }) {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -155,11 +167,9 @@ export function NotificationFeedScreen({ navigation }) {
       }
 
       // Deep-linking routing based on event type / payload data
-      if (item.data?.screen && navigation?.navigate) {
-        try {
-          navigation.navigate(item.data.screen, item.data.params);
-          return;
-        } catch {}
+      if (item.data?.screen && firstRegisteredRoute(navigation, [item.data.screen])) {
+        navigation.navigate(item.data.screen, item.data.params);
+        return;
       }
 
       switch (item.event_type) {
