@@ -839,11 +839,11 @@ A contact reachable on more than one channel is notified on all of them at once,
 
 ### Family broadcast tier — separate from the escalation above
 
-**SOS only.** `POST /emergency/alerts` also fires a second, independent notification path: every family member with an **active** `family_links` row to the elderly user gets pushed once, immediately, to every registered device — not phoned, not escalated, not retried on a schedule. This is a different opt-in than `emergency_contacts`: linking a dashboard means "I can see this account," not "call me," but a linked family member should still learn the moment SOS fires rather than finding out from the fanout tier's audit trail after the fact.
+**SOS and fall.** `POST /emergency/alerts` (and `POST /emergency/alerts/fall`) also fires a second, independent notification path: every family member with an **active** `family_links` row to the elderly user gets pushed once, immediately, to every registered device — not phoned, not escalated, not retried on a schedule. This is a different opt-in than `emergency_contacts`: linking a dashboard means "I can see this account," not "call me," but a linked family member should still learn the moment SOS fires rather than finding out from the fanout tier's audit trail after the fact.
 
 **No deduplication with the escalation tier.** A person who is both an active family member and an emergency contact gets two separate `notifications` rows for the same alert — one `channel: 'push'` with `emergencyContactId: null` (broadcast), one however the fanout tier reaches them (`emergencyContactId` set). Deliberate: a duplicate push is a minor annoyance, a missed one is dangerous.
 
-**Runs once, at creation, for SOS alerts only.** Not re-run by the escalation scheduler, and not triggered by `POST /emergency/alerts/fall` — extending it to other alert types is future work.
+**Runs once, at creation, for SOS and fall alerts.** Not re-run by the escalation scheduler, and not triggered by geofence breaches — extending it to other alert types is future work.
 
 ---
 

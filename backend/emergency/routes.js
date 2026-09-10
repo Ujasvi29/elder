@@ -164,7 +164,7 @@ emergencyRouter.post('/alerts', requireAuth, async (req, res) => {
   // re-run by the escalation scheduler. Every actively-linked family member
   // gets pushed once, right now: dashboard access is a different opt-in than
   // being phoned, but silence when SOS fires is the dangerous failure mode,
-  // not an extra push. SOS only for now — see BUILD_LOG.md.
+  // not an extra push. SOS and fall — see BUILD_LOG.md.
   broadcastToFamily(alert.id).catch((err) =>
     console.error(`Family broadcast failed for alert ${alert.id}:`, err)
   );
@@ -224,6 +224,13 @@ const handleFallAlert = async (req, res) => {
 
   advanceFanout(alert.id).catch((err) =>
     console.error(`Initial fanout failed for fall alert ${alert.id}:`, err)
+  );
+
+  // Same family push tier as SOS, same reason. Without it a fall only ever
+  // reached the family as an in-app feed row: no push, so nothing brought
+  // their app to the foreground and FamilyHome's AppState refetch never ran.
+  broadcastToFamily(alert.id).catch((err) =>
+    console.error(`Family broadcast failed for fall alert ${alert.id}:`, err)
   );
 
   listLinksForElderly(req.user.id, 'active')
