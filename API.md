@@ -1724,7 +1724,9 @@ One caregiver's full profile — no restriction beyond being signed in.
 }
 ```
 
-**Errors:** `400 validation_failed`, `403 not_permitted` (caller lacks `canManageCaregivers` for `elderlyUserId`), `404 caregiver_not_found`.
+Permitted: the elderly user themselves, admin, or **any** family member with an active link to `elderlyUserId`. `canManageCaregivers` is not required — there is no in-app payment, a booking only requests the caregiver and payment is arranged offline. Viewing someone else's booking (`GET /caregiver/bookings/:id`) and the rest of the caregiver module still require it.
+
+**Errors:** `400 validation_failed`, `403 not_permitted` (caller has no active family link to `elderlyUserId`), `404 caregiver_not_found`.
 
 ---
 

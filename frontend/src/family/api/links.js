@@ -23,7 +23,7 @@ import { apiRequest } from '../../shared/api/client';
  * @param {boolean} [input.canViewLocation]   default true — the elderly user
  *   chooses this at invite time, see ManageFamilyScreen
  * @param {boolean} [input.canManageCaregivers] default false — whether they can
- *   book and manage caregivers
+ *   manage care plans and caregiver visits (booking needs only an active link)
  */
 export function sendInvite({ phone, relationship, canViewLocation, canManageCaregivers }) {
   return apiRequest('/family/invites', {
@@ -83,8 +83,8 @@ export function promoteToEmergencyContact(linkId) {
  * PATCH /family/links/:id — elderly-only. Edits an active link's permission
  * fields without revoking it — same idea as the emergency-contact toggle,
  * a second independent dial on the same relationship. Used by
- * ManageFamilyScreen for `canManageCaregivers` ("let them book caregivers
- * and manage care plans/tasks for you"); any of the other permission
+ * ManageFamilyScreen for `canManageCaregivers` ("let them manage care
+ * plans and caregiver visits for you"); any of the other permission
  * fields work the same way if a screen needs them later.
  */
 export function updateLinkPermissions(linkId, patch) {

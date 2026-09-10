@@ -3,9 +3,9 @@
 //
 // route.params.elderlyUserId is null when the elderly user is searching for
 // themselves, and set when a family member is searching on a linked elderly
-// user's behalf (only reachable from FamilyLinksScreen when that link's
-// canManageCaregivers is true — the same gating pattern GeofencesScreen
-// uses for canViewLocation). Carried forward through Detail and BookingForm
+// user's behalf (reachable from FamilyLinksScreen/FamilyHomeScreen for any
+// active link — booking only requests a caregiver, payment is arranged
+// offline, so it isn't gated on canManageCaregivers). Carried forward through Detail and BookingForm
 // so the eventual POST /caregiver/bookings knows who the booking is for.
 //
 // city/language/specialization have no canonical list anywhere in the

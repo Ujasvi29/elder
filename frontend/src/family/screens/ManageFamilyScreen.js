@@ -339,7 +339,7 @@ export function ManageFamilyScreen({ navigation }) {
                 <View style={styles.toggleTextGroup}>
                   <Text style={styles.toggleLabel}>They can manage caregivers</Text>
                   <Text style={styles.toggleHint}>
-                    Turn this on to let them book caregivers and manage care plans for you.
+                    Turn this on to let them manage care plans and caregiver visits for you.
                   </Text>
                 </View>
                 <Switch
@@ -431,7 +431,7 @@ function FamilyCard({
         <View style={styles.toggleTextGroup}>
           <Text style={styles.toggleLabel}>Let them manage caregivers</Text>
           <Text style={styles.toggleHint}>
-            They'll be able to book caregivers, edit care plans, and manage caregiver visits for you.
+            They'll be able to edit care plans and manage caregiver visits for you. Anyone linked here can already request a caregiver booking.
           </Text>
         </View>
         {togglingManageCaregivers ? (
