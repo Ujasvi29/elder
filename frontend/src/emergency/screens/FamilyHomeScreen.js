@@ -56,20 +56,68 @@
 //
 // The links themselves ride the existing alert poll (GET /family/links), so
 // this adds no new endpoint and no second interval.
+//
+// The Family Links and My Bookings cards state counts, not fixed captions.
+// They used to read "Pending invites & who you're linked to" and "Caregiver
+// requests, confirmed and past visits" — sentences, hardcoded, with no data
+// behind them, which is why an accepted invite and a confirmed booking both
+// looked like the home screen was stuck: it had never been showing that state
+// to begin with, and the numbers only appeared once you opened the screen
+// behind the card. Both now count from the same endpoints those screens use.
 // ============================================================================
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { ActivityIndicator, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { listFamilyAlerts, listFamilyAlertHistory, resolveAlert, acknowledgeAlert } from '../api/alerts';
 import { listLinks } from '../../family/api/links';
+import { listBookings } from '../../caregiver/api/bookings';
 import { ApiError, NetworkError } from '../../shared/api/client';
 import { useAuth } from '../../shared/auth/AuthContext';
 import { colors, spacing, type } from '../../shared/ui/theme';
+import { bookingStatusLabel } from '../../caregiver/bookingFormat';
 
 const POLL_WITH_ACTIVE_MS = 10_000;
 const POLL_IDLE_MS = 20_000;
+
+// The booking states worth counting on a summary card: the ones still going
+// to change. Completed, cancelled and rejected bookings are history — real,
+// but not what someone glances at the home screen to find out.
+const LIVE_BOOKING_STATUSES = ['requested', 'confirmed', 'active'];
+
+/**
+ * "1 invite waiting · Linked to 2 people", or a plain description when there
+ * is nothing to count. Deliberately states the numbers rather than a status
+ * word: "pending" on a card that never changed is what made this screen look
+ * stale in the first place.
+ */
+function linksSummary(pendingCount, activeCount) {
+  const parts = [];
+  if (pendingCount > 0) parts.push(`${pendingCount} invite${pendingCount === 1 ? '' : 's'} waiting`);
+  if (activeCount > 0) parts.push(`Linked to ${activeCount} ${activeCount === 1 ? 'person' : 'people'}`);
+  return parts.length ? parts.join(' · ') : 'No invites or links yet';
+}
+
+/**
+ * "1 Confirmed · 2 Waiting for caregiver" — counted by status, worded with
+ * the same bookingStatusLabel the bookings screen itself uses, so the home
+ * card and the screen behind it never disagree about what a state is called.
+ */
+function bookingsSummary(bookings) {
+  const counts = new Map();
+  for (const booking of bookings) {
+    if (!LIVE_BOOKING_STATUSES.includes(booking.status)) continue;
+    counts.set(booking.status, (counts.get(booking.status) ?? 0) + 1);
+  }
+
+  const parts = LIVE_BOOKING_STATUSES.filter((s) => counts.has(s)).map(
+    (s) => `${counts.get(s)} ${bookingStatusLabel(s)}`
+  );
+
+  return parts.length ? parts.join(' · ') : 'No bookings in progress';
+}
 
 export function FamilyHomeScreen({ navigation }) {
   const { user, signOut } = useAuth();
@@ -77,6 +125,7 @@ export function FamilyHomeScreen({ navigation }) {
   const [alerts, setAlerts] = useState([]);
   const [history, setHistory] = useState([]);
   const [links, setLinks] = useState([]);
+  const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [banner, setBanner] = useState(null);
@@ -87,19 +136,26 @@ export function FamilyHomeScreen({ navigation }) {
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
     try {
-      // Links ride the same poll as the alerts, but its own failure is
-      // swallowed rather than allowed to reject the Promise.all: a family
-      // member whose links call fails still needs to see an active SOS, and
-      // the previously loaded cards are better than none. Same reasoning as
-      // the silent-poll catch below, one level down.
-      const [{ alerts: active }, { alerts: recent }, linkResult] = await Promise.all([
+      // Links and bookings ride the same poll as the alerts, but each one's
+      // failure is swallowed rather than allowed to reject the Promise.all: a
+      // family member whose links or bookings call fails still needs to see an
+      // active SOS, and the previously loaded summary is better than none.
+      // Same reasoning as the silent-poll catch below, one level down.
+      //
+      // Links are fetched unfiltered, not status='active': the Family Links
+      // card counts pending invites too, and a pending invite that never shows
+      // up on this screen until you tap through is the bug this fetch exists
+      // to close.
+      const [{ alerts: active }, { alerts: recent }, linkResult, bookingResult] = await Promise.all([
         listFamilyAlerts(),
         listFamilyAlertHistory(),
-        listLinks({ status: 'active' }).catch(() => null),
+        listLinks().catch(() => null),
+        listBookings().catch(() => null),
       ]);
       setAlerts(active);
       setHistory(recent);
       if (linkResult) setLinks(linkResult.links ?? []);
+      if (bookingResult) setBookings(bookingResult.bookings ?? []);
       setBanner(null);
     } catch (err) {
       // A background poll failing should not overwrite a list that is still
@@ -116,9 +172,25 @@ export function FamilyHomeScreen({ navigation }) {
     }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // Refetch every time this screen is focused, not only on mount. The stack
+  // keeps FamilyHome mounted underneath while someone is in Family Links or
+  // My Bookings, so a plain mount effect never runs again — an invite accepted
+  // or a booking confirmed while they were in there would sit unreflected here
+  // until the next poll tick, and the summary cards showed nothing live at all.
+  // Coming back to home is the exact moment the numbers must already be right.
+  //
+  // The first focus loads with the spinner; every later one is silent, so
+  // returning to this screen never blanks a list or an active alert while the
+  // request is in flight. Same pattern the sub-screens use (BookingsScreen,
+  // FamilyLinksScreen), which is how they looked fresh and this screen didn't.
+  const hasLoadedRef = useRef(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      load({ silent: hasLoadedRef.current });
+      hasLoadedRef.current = true;
+    }, [load])
+  );
 
   // Poll faster while there is an open alert to watch than while the list is
   // quiet — matches the elderly screen's rhythm.
@@ -128,11 +200,13 @@ export function FamilyHomeScreen({ navigation }) {
     return () => clearInterval(id);
   }, [alerts.length, load]);
 
-  // Same filter FamilyLinksScreen applies. The request already asks for
-  // status='active', so this is belt-and-braces rather than the only guard —
-  // but the two screens showing the same cards must agree on what "linked"
-  // means, and the cheapest way to guarantee that is to apply the same test.
+  // The same two filters FamilyLinksScreen applies to the same unfiltered
+  // GET /family/links response. Both screens showing the same links must agree
+  // on what "linked" and "invited" mean, and the cheapest way to guarantee
+  // that is to apply the identical test rather than a server-side filter here
+  // and a client-side one there.
   const activeLinks = links.filter((l) => l.status === 'active');
+  const pendingInvites = links.filter((l) => l.status === 'pending');
 
   async function onRefresh() {
     setRefreshing(true);
@@ -206,20 +280,22 @@ export function FamilyHomeScreen({ navigation }) {
           style={styles.familyLinksButton}
           onPress={() => navigation.navigate('FamilyLinks')}
           accessibilityRole="button"
-          accessibilityLabel="Family links: pending invites and who you're linked to"
+          accessibilityLabel={`Family links. ${linksSummary(pendingInvites.length, activeLinks.length)}`}
         >
           <Text style={styles.familyLinksButtonText}>Family Links</Text>
-          <Text style={styles.familyLinksButtonSubtext}>Pending invites & who you're linked to</Text>
+          <Text style={styles.familyLinksButtonSubtext}>
+            {linksSummary(pendingInvites.length, activeLinks.length)}
+          </Text>
         </Pressable>
 
         <Pressable
           style={styles.familyLinksButton}
           onPress={() => navigation.navigate('Bookings')}
           accessibilityRole="button"
-          accessibilityLabel="My caregiver bookings"
+          accessibilityLabel={`My caregiver bookings. ${bookingsSummary(bookings)}`}
         >
           <Text style={styles.familyLinksButtonText}>My Bookings</Text>
-          <Text style={styles.familyLinksButtonSubtext}>Caregiver requests, confirmed and past visits</Text>
+          <Text style={styles.familyLinksButtonSubtext}>{bookingsSummary(bookings)}</Text>
         </Pressable>
 
         <Pressable
