@@ -36,7 +36,12 @@ import { taskPriorityLabel, taskStatusLabel } from '../taskFormat';
 const OPEN_STATUSES = ['pending', 'in_progress'];
 
 export function ScheduleTasksScreen({ navigation, route }) {
-  const { scheduleId, elderlyUserId, elderlyName, caregiverId } = route.params;
+  // `?? {}` because a notification tap can land here with no params at all —
+  // a feed item written before the payload carried them, say. Destructuring
+  // undefined throws during render, which takes the whole app down (there is
+  // no error boundary); the default degrades to the viewer's unfiltered task
+  // list instead, which is a wider list but a live screen.
+  const { scheduleId, elderlyUserId, elderlyName, caregiverId } = route.params ?? {};
   const { user } = useAuth();
 
   const [tasks, setTasks] = useState([]);

@@ -26,6 +26,25 @@ async function getCaregiverUserId(caregiverId) {
   return rows[0]?.user_id ?? null;
 }
 
+// Deep-link target for task feed items. 'TaskDetails' used to be sent here
+// and no navigator registers it, so every task notification tapped went
+// nowhere (React Navigation does not throw on an unknown route — see
+// NotificationFeedScreen). ScheduleTasksScreen is the screen that actually
+// shows a task and carries the caregiver's "Mark Done" button, so send that
+// with the params it reads. task.scheduleId is nullable — a task not tied to
+// a visit deep-links to the unfiltered list rather than nowhere.
+function taskFeedTarget(task) {
+  return {
+    screen: 'ScheduleTasks',
+    params: {
+      scheduleId: task.scheduleId,
+      elderlyUserId: task.elderlyUserId,
+      elderlyName: task.elderlyName,
+      caregiverId: task.assignedToCaregiverId,
+    },
+  };
+}
+
 // Elderly self, the caregiver being assigned (if any), family with
 // hasManageCaregiversPermission, or admin.
 async function requireTaskCreatePermission(req, data) {
@@ -61,7 +80,7 @@ tasksRouter.post('/', requireAuth, requireRole('elderly', 'family', 'caregiver',
           eventId: task.id,
           title: 'Care Task Assigned',
           body: `Task "${task.title}" was created/assigned.`,
-          data: { screen: 'TaskDetails', params: { id: task.id } },
+          data: taskFeedTarget(task),
           sendPush: true,
         });
       }
@@ -114,7 +133,7 @@ tasksRouter.patch('/:id/status', requireAuth, requireRole('caregiver', 'elderly'
           eventId: task.id,
           title: `Care Task ${status.charAt(0).toUpperCase() + status.slice(1)}`,
           body: `Task "${task.title}" status updated to ${status}.`,
-          data: { screen: 'TaskDetails', params: { id: task.id } },
+          data: taskFeedTarget(task),
           sendPush: true,
         });
       }

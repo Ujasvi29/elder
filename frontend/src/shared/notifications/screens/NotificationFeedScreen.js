@@ -192,9 +192,16 @@ export function NotificationFeedScreen({ navigation }) {
           break;
         }
         case 'task_assigned':
-        case 'task_status_changed':
-          try { navigation.navigate('ScheduleTasks'); } catch {}
+        case 'task_status_changed': {
+          // New feed items carry these in data.params and are handled by the
+          // data.screen branch above; this is the path for older items whose
+          // payload still names the never-registered 'TaskDetails'. Pass
+          // whatever params the payload does have — ScheduleTasksScreen
+          // tolerates them being absent and falls back to the unfiltered list.
+          const target = firstRegisteredRoute(navigation, ['ScheduleTasks']);
+          if (target) navigation.navigate(target, item.data?.params);
           break;
+        }
         case 'invite_received':
         case 'invite_accepted':
         case 'permissions_changed':
