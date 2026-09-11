@@ -19,7 +19,13 @@
 // location trail later with nothing pointing at why.
 // ============================================================================
 
-import * as FileSystem from 'expo-file-system';
+// The '/legacy' entry point is load-bearing, not leftover: on SDK 54 the
+// bare 'expo-file-system' entry exports getInfoAsync/readAsStringAsync/
+// writeAsStringAsync as stubs that throw on call, and does not export
+// documentDirectory at all. Dropping the suffix (as commit 0e381b8 did)
+// silently turned QUEUE_FILE into the string "undefined..." and made every
+// write throw — two days of background readings never left the device.
+import * as FileSystem from 'expo-file-system/legacy';
 
 const QUEUE_FILE = `${FileSystem.documentDirectory}eldercare-location-queue.json`;
 const MAX_QUEUE_SIZE = 2000;
@@ -38,8 +44,20 @@ async function readState() {
   }
 }
 
+// Logged, never rethrown. A throw here propagates out of enqueueLocation and
+// rejects the whole TaskManager delivery — which is precisely how the
+// 0e381b8 import regression stayed invisible: the task ran, died on the
+// first write, and reported nothing anywhere. A failed write costs one
+// reading (or, from removeOldest, re-sends readings the backend's duplicate
+// guard already rejects); a failed delivery costs everything behind it.
 async function writeState(state) {
-  await FileSystem.writeAsStringAsync(QUEUE_FILE, JSON.stringify(state));
+  try {
+    await FileSystem.writeAsStringAsync(QUEUE_FILE, JSON.stringify(state));
+    return true;
+  } catch (err) {
+    console.warn(`Location queue write failed — this reading is lost: ${err?.message ?? err}`);
+    return false;
+  }
 }
 
 /**

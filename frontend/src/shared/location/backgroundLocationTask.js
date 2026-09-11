@@ -17,7 +17,7 @@
 
 import * as TaskManager from 'expo-task-manager';
 import * as Battery from 'expo-battery';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy'; // '/legacy' is required on SDK 54 — see locationQueue.js
 
 import { BACKGROUND_LOCATION_TASK, TIME_INTERVAL_MS, DISTANCE_INTERVAL_METERS } from './backgroundLocationTaskName';
 import { enqueueLocation } from './locationQueue';
@@ -55,8 +55,19 @@ async function readMarker() {
   }
 }
 
+// Logged, never rethrown — same reasoning as locationQueue.js's writeState.
+// A throw here rejects the whole task delivery, losing the readings already
+// queued behind it and the flush at the end. A lost marker only costs the
+// throttle its memory: readMarker returns null, the next delivery is
+// accepted unconditionally, and the floor re-establishes itself from there.
 async function writeMarker(marker) {
-  await FileSystem.writeAsStringAsync(MARKER_FILE, JSON.stringify(marker));
+  try {
+    await FileSystem.writeAsStringAsync(MARKER_FILE, JSON.stringify(marker));
+    return true;
+  } catch (err) {
+    console.warn(`Location throttle marker write failed — next delivery will not be throttled: ${err?.message ?? err}`);
+    return false;
+  }
 }
 
 TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
