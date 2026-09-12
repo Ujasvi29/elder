@@ -234,8 +234,12 @@ function ScheduleCard({ schedule, busy, checkoutBlocked, onCheckIn, onCheckOut, 
         <Pressable onPress={onViewCarePlan} accessibilityRole="button" style={styles.carePlanLink}>
           <Text style={styles.carePlanLinkText}>Care Plan</Text>
         </Pressable>
-        <Pressable onPress={onViewTasks} accessibilityRole="button" style={styles.carePlanLink}>
-          <Text style={styles.carePlanLinkText}>Tasks</Text>
+        {/* Tasks gets button chrome, Care Plan stays a plain link: this is the
+            only route to the per-task "Mark Done" button (ScheduleTasksScreen),
+            and as faint text beside the big Check In / Check Out buttons it
+            read as a label, not a control. */}
+        <Pressable onPress={onViewTasks} accessibilityRole="button" style={styles.tasksButton}>
+          <Text style={styles.tasksButtonText}>Tasks</Text>
         </Pressable>
       </View>
 
@@ -294,9 +298,17 @@ const styles = StyleSheet.create({
   cardName: { fontSize: type.heading, fontWeight: '800', color: colors.text },
   cardMeta: { fontSize: type.body - 1, color: colors.textMuted },
   cardInstructions: { fontSize: type.small + 1, color: colors.text, fontStyle: 'italic', marginTop: 4 },
-  linkRow: { flexDirection: 'row', gap: spacing.md },
+  linkRow: { flexDirection: 'row', gap: spacing.md, alignItems: 'center', marginTop: 4 },
   carePlanLink: { paddingVertical: 4 },
   carePlanLinkText: { fontSize: type.small + 1, fontWeight: '700', color: colors.primary },
+  tasksButton: {
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md,
+  },
+  tasksButtonText: { fontSize: type.body - 1, fontWeight: '800', color: colors.primary },
   reportButton: {
     alignSelf: 'flex-start',
     borderRadius: 12,

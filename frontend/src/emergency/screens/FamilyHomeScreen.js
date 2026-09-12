@@ -68,7 +68,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { ActivityIndicator, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, AppState, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { listFamilyAlerts, listFamilyAlertHistory, resolveAlert, acknowledgeAlert } from '../api/alerts';
@@ -199,6 +199,19 @@ export function FamilyHomeScreen({ navigation }) {
     const id = setInterval(() => load({ silent: true }), intervalMs);
     return () => clearInterval(id);
   }, [alerts.length, load]);
+
+  // Also refetch the moment the app comes back to the foreground. Someone who
+  // opens the app from an SOS push lands back on this screen with it already
+  // focused — no focus event fires, so useFocusEffect above never runs, and
+  // the list stayed exactly as it was before the app was backgrounded (usually
+  // "No active alerts") until the next poll tick, up to POLL_IDLE_MS later. A
+  // device-test SOS was cancelled 53s after it fired; that gap is most of it.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (next === 'active') load({ silent: true });
+    });
+    return () => subscription.remove();
+  }, [load]);
 
   // The same two filters FamilyLinksScreen applies to the same unfiltered
   // GET /family/links response. Both screens showing the same links must agree

@@ -15,9 +15,9 @@
 // and a linked family member gets two pushes. Deliberate: a duplicate
 // notification is an annoyance, a missed one is dangerous — see BUILD_LOG.md.
 //
-// SOS only for now — called from POST /emergency/alerts, not the fall-alert
-// route. Widening this to other alert types is future work, not attempted
-// here.
+// SOS and fall — called from POST /emergency/alerts and the fall-alert route.
+// Nothing here is SOS-specific: buildAlertMessage words the push per
+// alert_type. Geofence breaches are not broadcast; that is still future work.
 // ============================================================================
 
 import { query } from '../../shared/db/pool.js';
