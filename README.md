@@ -160,13 +160,13 @@ The Phase 5 Emergency Response module integrates directly with the existing Post
 cd backend
 npm install
 
-# Verify environment variables in .env
-# DB_HOST=localhost
-# DB_PORT=5432
-# DB_NAME=eldercare
-# DB_USER=postgres
-# DB_PASSWORD=postgres
-# JWT_SECRET=your_jwt_secret
+# Copy .env.example at the repository root to .env and fill it in.
+# The backend reads exactly two required variables (shared/config/env.js):
+#   DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@localhost:5432/eldercare
+#   JWT_SECRET=<32+ random characters>
+# Optional: PORT (defaults to 5000), plus the notification-channel keys
+# documented in .env.example. A missing DATABASE_URL or JWT_SECRET exits
+# at startup with a message naming the file.
 
 npm start
 ```
@@ -185,4 +185,34 @@ npx expo start --go -c
 ---
 
 ## 8. API Documentation
-All API endpoints, request/response formats, error codes, and authentication requirements are documented in [`API.md`](file:///c:/Users/ujasv/OneDrive/Desktop/Elder%20Care/elder-care/API.md).
+All API endpoints, request/response formats, error codes, and authentication requirements are documented in [`API.md`](API.md).
+
+---
+
+## 9. Notes for Reviewers
+
+Things a new owner of this repository needs to know before building or deploying it.
+
+- **The EAS project belongs to `@sree25`.** `frontend/app.config.js` carries
+  `extra.eas.projectId = c89864ad-512c-4674-9258-236cb3b560f9`, which is linked to a
+  personal Expo account. Another organisation cannot build against it. Run
+  `npx eas-cli init` from `frontend/` to create and link a project under your own
+  account before the first build; that rewrites the `projectId`. Note that Expo push
+  tokens are project-scoped, so existing `device_tokens` rows become stale once the id
+  changes.
+- **`usesCleartextTraffic` is `true`, for development only.** Set via the
+  `expo-build-properties` plugin in `frontend/app.config.js`. It exists because
+  `EXPO_PUBLIC_API_URL` is a plain `http://` LAN address during development, and
+  Android blocks cleartext by default. Before any production build, either replace it
+  with a `network_security_config.xml` scoped to private address ranges, or drop it
+  once the backend is reachable over `https://`.
+- **`EXPO_PUBLIC_API_URL` must be set as an EAS environment variable before building.**
+  The `preview` and `production` profiles have no fallback: `app.config.js` throws
+  during config resolution if the variable is missing, rather than baking in a
+  localhost address an installed app can never reach. Local development does not need
+  it — the dev client resolves the backend from Metro's own host. See `SETUP.md`.
+- **Ambulance dispatch and disaster alerts run on mock providers, by design.**
+  `backend/emergency/ambulance/mockProvider.js` and
+  `backend/emergency/disaster/mockProvider.js` simulate driver assignment and the alert
+  feed. No third-party emergency service is contacted. See section 5 for the
+  architecture and the swap points for a real provider.

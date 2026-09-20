@@ -146,7 +146,7 @@ psql -U postgres -d eldercare -v ON_ERROR_STOP=1 -f shared/db/schema.sql
 
 `ON_ERROR_STOP=1` means the script stops immediately if anything goes wrong, instead of plowing ahead and leaving you with a half-built database. If it finishes without printing an error, it worked.
 
-### 4.3 Confirm all 19 tables exist
+### 4.3 Confirm all 21 tables exist
 
 Connect to the database interactively:
 
@@ -160,7 +160,7 @@ Once you see the `eldercare=#` prompt, list the tables:
 \dt
 ```
 
-Count the rows in the output — you should see **19 tables**. Then exit:
+Count the rows in the output — you should see **21 tables**. Then exit:
 
 ```
 \q
@@ -362,5 +362,5 @@ to see exactly where you are, and check it matches what the step you're on expec
 
 - `backend/` — the Express API server. Runs on your laptop, listens on port 5000.
 - `frontend/` — the Expo/React Native app. Also runs on your laptop (as a bundler), but the actual app UI runs on your phone via Expo Go.
-- `backend/shared/db/schema.sql` — the full database schema (19 tables).
+- `backend/shared/db/schema.sql` — the full database schema (21 tables).
 - `.env.example` — the template for your own `.env`. See `API.md` for full endpoint documentation, `SCHEMA_DESIGN.md` for the reasoning behind the database design, and `BUILD_LOG.md` for a full history of what's been built and why.

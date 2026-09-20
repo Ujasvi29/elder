@@ -71,7 +71,9 @@ function assert(condition, label) {
 // Direct DB query helper — uses the same pool the backend uses
 // ---------------------------------------------------------------------------
 import pg from 'pg';
-const pool = new pg.Pool({ connectionString: 'postgresql://postgres:sree@localhost:5432/eldercare' });
+import { config } from './shared/config/env.js';
+
+const pool = new pg.Pool({ connectionString: config.databaseUrl });
 
 async function dbQuery(text, params) {
   const result = await pool.query(text, params);

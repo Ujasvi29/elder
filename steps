@@ -1,8 +1,0 @@
-frontend
-cd .\elder-care\frontend
-npx expo start -c
-npx expo start -c
-
-backend
-cd .\elder-care\backend
-npm start
