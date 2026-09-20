@@ -185,7 +185,7 @@ npx expo start --go -c
 ---
 
 ## 8. API Documentation
-All API endpoints, request/response formats, error codes, and authentication requirements are documented in [`API.md`](file:///c:/Users/ujasv/OneDrive/Desktop/Elder%20Care/elder-care/API.md).
+All API endpoints, request/response formats, error codes, and authentication requirements are documented in [`API.md`](API.md).
 
 ---
 
